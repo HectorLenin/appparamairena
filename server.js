@@ -6,48 +6,37 @@ const db = require('./database');
 const gmail = require('./gmail');
 const emailService = require('./emailService');
 
-// Cargar variables de entorno
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ============================================
-// MIDDLEWARE
-// ============================================
-
-// CORS - Permitir solicitudes desde el frontend
+// Middleware
 app.use(cors({
     origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : '*',
     credentials: true
 }));
-
 app.use(express.json({ limit: '10mb' }));
 
-// ============================================
-// HEALTH CHECK (para Railway)
-// ============================================
-
+// Health check
 app.get('/', (req, res) => {
     res.json({
         status: 'OK',
         name: 'Reenvío Netflix Backend',
         version: '2.0.0',
         admin_email: process.env.ADMIN_EMAIL,
-        cycle_days: process.env.CYCLE_DAYS || 20,
-        uptime: process.uptime()
+        cycle_days: process.env.CYCLE_DAYS || 20
     });
 });
 
 // ============================================
-// PROCESO PRINCIPAL DE REENVÍO
+// PROCESO PRINCIPAL
 // ============================================
 
 let procesoEnEjecucion = false;
 
 async function procesarYReenviar(emailsSeleccionados = null) {
     if (procesoEnEjecucion) {
-        console.log('⏳ Proceso ya en ejecución');
         return { success: false, message: 'Proceso en ejecución' };
     }
 
@@ -55,20 +44,16 @@ async function procesarYReenviar(emailsSeleccionados = null) {
         procesoEnEjecucion = true;
         console.log('🔄 Iniciando proceso de reenvío...');
 
-        // 1. Verificar token nuevo
         const tokenData = await gmail.hayTokenNuevo();
         if (!tokenData) {
-            console.log('ℹ️ No hay token nuevo para reenviar');
             procesoEnEjecucion = false;
             return { success: false, message: 'No hay token nuevo' };
         }
 
         console.log(`📧 Token encontrado: ${tokenData.token}`);
 
-        // 2. Obtener destinatarios
         let destinatarios = await db.getDestinatarios();
         
-        // Filtrar si se pasaron emails específicos
         if (emailsSeleccionados && emailsSeleccionados.length > 0) {
             destinatarios = destinatarios.filter(d => 
                 emailsSeleccionados.includes(d.email)
@@ -78,21 +63,18 @@ async function procesarYReenviar(emailsSeleccionados = null) {
         const emails = destinatarios.map(d => d.email);
 
         if (emails.length === 0) {
-            console.log('⚠️ No hay destinatarios configurados');
             procesoEnEjecucion = false;
             return { success: false, message: 'Sin destinatarios' };
         }
 
         console.log(`📨 Enviando a ${emails.length} destinatarios...`);
 
-        // 3. Reenviar token
         const resultados = await emailService.reenviarTokenMultiple(
             emails,
             tokenData.token,
             new Date()
         );
 
-        // 4. Guardar registro
         const exitosos = resultados.filter(r => r.success);
         if (exitosos.length > 0) {
             await db.saveTokenEnviado(
@@ -102,8 +84,6 @@ async function procesarYReenviar(emailsSeleccionados = null) {
             );
             await db.setUltimoEnvio(new Date().toISOString());
         }
-
-        console.log(`✅ Proceso completado: ${exitosos.length}/${emails.length} envíos exitosos`);
 
         procesoEnEjecucion = false;
         
@@ -116,38 +96,17 @@ async function procesarYReenviar(emailsSeleccionados = null) {
         };
 
     } catch (error) {
-        console.error('❌ Error en proceso de reenvío:', error);
+        console.error('❌ Error:', error);
         procesoEnEjecucion = false;
         return { success: false, error: error.message };
     }
 }
 
 // ============================================
-// CRON - CADA 20 DÍAS (Para Railway)
+// ENDPOINTS
 // ============================================
 
-// Railway necesita que el cron se ejecute en el servidor
-// Se ejecuta a las 9:00 AM cada 20 días
-cron.schedule('0 9 */20 * *', async () => {
-    console.log('⏰ Ejecutando tarea programada (cada 20 días)...');
-    const resultado = await procesarYReenviar();
-    console.log('📊 Resultado:', resultado);
-});
-
-// También al iniciar (si hay token pendiente)
-setTimeout(async () => {
-    console.log('🚀 Ejecutando verificación inicial...');
-    const resultado = await procesarYReenviar();
-    if (resultado.success) {
-        console.log('✅ Primer reenvío completado');
-    }
-}, 5000);
-
-// ============================================
-// ENDPOINTS API
-// ============================================
-
-// 1. Obtener estado del sistema
+// Obtener estado
 app.get('/api/estado', async (req, res) => {
     try {
         const stats = await db.getEstadisticas();
@@ -174,7 +133,7 @@ app.get('/api/estado', async (req, res) => {
     }
 });
 
-// 2. Obtener destinatarios
+// Obtener destinatarios
 app.get('/api/destinatarios', async (req, res) => {
     try {
         const destinatarios = await db.getDestinatarios();
@@ -189,7 +148,7 @@ app.get('/api/destinatarios', async (req, res) => {
     }
 });
 
-// 3. Agregar destinatario
+// Agregar destinatario
 app.post('/api/destinatarios', async (req, res) => {
     try {
         const { email, nombre } = req.body;
@@ -209,7 +168,7 @@ app.post('/api/destinatarios', async (req, res) => {
     }
 });
 
-// 4. Eliminar destinatario
+// Eliminar destinatario
 app.delete('/api/destinatarios/:email', async (req, res) => {
     try {
         const email = decodeURIComponent(req.params.email);
@@ -225,12 +184,11 @@ app.delete('/api/destinatarios/:email', async (req, res) => {
     }
 });
 
-// 5. Reenviar token (manual o a seleccionados)
+// Reenviar token
 app.post('/api/reenviar', async (req, res) => {
     try {
         const { emails } = req.body;
         
-        // Validar
         if (!emails || emails.length === 0) {
             return res.status(400).json({
                 success: false,
@@ -238,7 +196,6 @@ app.post('/api/reenviar', async (req, res) => {
             });
         }
 
-        // Verificar que los emails existan
         const destinatarios = await db.getDestinatarios();
         const emailsValidos = destinatarios
             .filter(d => emails.includes(d.email))
@@ -251,15 +208,38 @@ app.post('/api/reenviar', async (req, res) => {
             });
         }
 
-        // Ejecutar reenvío
-        const resultado = await procesarYReenviar(emailsValidos);
-        
+        // Verificar que haya un token
+        let token = await db.getUltimoToken();
+        if (!token) {
+            // Intentar leer de Gmail
+            const tokenData = await gmail.hayTokenNuevo();
+            if (tokenData) {
+                token = tokenData.token;
+                await db.setUltimoToken(token);
+            } else {
+                return res.status(400).json({
+                    success: false,
+                    error: 'No hay token disponible. Usa el ingreso manual.'
+                });
+            }
+        }
+
+        const resultado = await emailService.reenviarTokenMultiple(
+            emailsValidos,
+            token,
+            new Date()
+        );
+
+        const exitosos = resultado.filter(r => r.success);
+        await db.saveTokenEnviado(token, exitosos.length, exitosos[0]?.messageId || '');
+        await db.setUltimoEnvio(new Date().toISOString());
+
         res.json({
-            success: resultado.success,
-            message: resultado.message || 'Reenvío completado',
-            token: resultado.token || null,
-            exitosos: resultado.exitosos || 0,
-            fallidos: resultado.fallidos || 0
+            success: true,
+            message: `Reenviado a ${exitosos.length} destinatarios`,
+            token: token,
+            exitosos: exitosos.length,
+            fallidos: resultado.length - exitosos.length
         });
 
     } catch (error) {
@@ -268,7 +248,7 @@ app.post('/api/reenviar', async (req, res) => {
     }
 });
 
-// 6. Guardar token manualmente (emergencia)
+// Guardar token manual
 app.post('/api/token/manual', async (req, res) => {
     try {
         const { token } = req.body;
@@ -294,7 +274,7 @@ app.post('/api/token/manual', async (req, res) => {
     }
 });
 
-// 7. Obtener token actual (debug)
+// Obtener token actual
 app.get('/api/token/actual', async (req, res) => {
     try {
         const token = await db.getUltimoToken();
@@ -310,16 +290,19 @@ app.get('/api/token/actual', async (req, res) => {
 });
 
 // ============================================
-// MANEJO DE ERRORES
+// CRON - CADA 20 DÍAS
 // ============================================
 
-app.use((err, req, res, next) => {
-    console.error('❌ Error no manejado:', err);
-    res.status(500).json({
-        success: false,
-        error: 'Error interno del servidor'
-    });
+cron.schedule('0 9 */20 * *', async () => {
+    console.log('⏰ Ejecutando tarea programada (cada 20 días)...');
+    await procesarYReenviar();
 });
+
+// Verificación inicial
+setTimeout(async () => {
+    console.log('🚀 Ejecutando verificación inicial...');
+    await procesarYReenviar();
+}, 5000);
 
 // ============================================
 // INICIAR SERVIDOR
@@ -332,19 +315,7 @@ app.listen(PORT, () => {
     console.log(`📡 Puerto: ${PORT}`);
     console.log(`📧 Admin: ${process.env.ADMIN_EMAIL || 'No configurado'}`);
     console.log(`🔄 Ciclo: cada ${process.env.CYCLE_DAYS || 20} días`);
-    console.log(`🌐 URL: http://localhost:${PORT}`);
     console.log('========================================');
-    console.log('⏰ Cron programado: 9:00 AM cada 20 días');
-});
-
-// Manejar señales de terminación
-process.on('SIGTERM', () => {
-    console.log('🛑 Recibido SIGTERM, cerrando...');
-    process.exit(0);
-});
-
-process.on('unhandledRejection', (error) => {
-    console.error('❌ Promesa no manejada:', error);
 });
 
 module.exports = app;
