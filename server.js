@@ -9,12 +9,10 @@ const emailService = require('./emailService');
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
-app.use(cors({
-    origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : '*',
-    credentials: true
-}));
+// ✅ CORS (permitir todos los orígenes para pruebas)
+app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 app.get('/', (req, res) => {
@@ -69,6 +67,7 @@ async function procesarYReenviar(emailsSeleccionados = null) {
 
         console.log(`📨 Reenviando correo original a ${emails.length} destinatarios...`);
 
+        // ✅ USAR APP PASSWORD (más estable que OAuth2)
         const resultados = await emailService.reenviarTokenMultiple(
             emails,
             correoOriginal
@@ -102,18 +101,14 @@ async function procesarYReenviar(emailsSeleccionados = null) {
 }
 
 // ============================================
-// CRON
+// REENVÍO AUTOMÁTICO AL INICIAR (A TODOS)
 // ============================================
 
-cron.schedule('0 9 */20 * *', async () => {
-    console.log('⏰ Ejecutando tarea programada...');
-    await procesarYReenviar();
-});
-
 setTimeout(async () => {
-    console.log('🚀 Ejecutando verificación inicial...');
-    await procesarYReenviar();
-}, 5000);
+    console.log('🚀 Ejecutando reenvío automático al iniciar...');
+    const resultado = await procesarYReenviar();
+    console.log('📊 Resultado del reenvío automático:', resultado);
+}, 10000); // Espera 10 segundos para que todo cargue
 
 // ============================================
 // ENDPOINTS
