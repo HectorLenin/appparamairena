@@ -1,21 +1,26 @@
 const nodemailer = require('nodemailer');
-const { initOAuth2 } = require('./gmail');
+
+// ============================================
+// TRANSPORTER CON APP PASSWORD (RECOMENDADO)
+// ============================================
 
 function createTransporter() {
-    const auth = initOAuth2();
-    
     return nodemailer.createTransport({
         service: 'gmail',
         auth: {
-            type: 'OAuth2',
             user: process.env.ADMIN_EMAIL,
-            clientId: process.env.GOOGLE_CLIENT_ID,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-            refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
-            accessToken: auth.credentials.access_token
-        }
+            pass: process.env.EMAIL_PASS  // ← App Password
+        },
+        // Timeouts para evitar errores
+        connectionTimeout: 30000,
+        greetingTimeout: 30000,
+        socketTimeout: 30000
     });
 }
+
+// ============================================
+// REENVIAR CORREO ORIGINAL
+// ============================================
 
 async function reenviarCorreoOriginal(destinatario, correoOriginal) {
     try {
@@ -51,13 +56,18 @@ async function reenviarCorreoOriginal(destinatario, correoOriginal) {
     }
 }
 
+// ============================================
+// REENVIAR A MÚLTIPLES DESTINATARIOS
+// ============================================
+
 async function reenviarTokenMultiple(destinatarios, correoOriginal) {
     const resultados = [];
     
     for (const destinatario of destinatarios) {
         const resultado = await reenviarCorreoOriginal(destinatario, correoOriginal);
         resultados.push(resultado);
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Esperar 2 segundos entre envíos
+        await new Promise(resolve => setTimeout(resolve, 2000));
     }
     
     return resultados;
