@@ -1,161 +1,119 @@
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+// ============================================
+// BASE DE DATOS EN MEMORIA (PERSISTENTE)
+// ============================================
 
-// Crear o abrir base de datos
-const dbPath = path.join(__dirname, 'database.sqlite');
-const db = new sqlite3.Database(dbPath);
+const datos = {
+    destinatarios: [],
+    tokensEnviados: [],
+    configuracion: {
+        ultimo_token: '',
+        ultimo_token_fecha: '',
+        ultimo_envio_fecha: ''
+    }
+};
 
-// Inicializar tablas
-db.serialize(() => {
-    // Tabla de destinatarios
-    db.run(`
-        CREATE TABLE IF NOT EXISTS destinatarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT UNIQUE NOT NULL,
-            nombre TEXT,
-            activo INTEGER DEFAULT 1,
-            fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
-
-    // Tabla de tokens enviados
-    db.run(`
-        CREATE TABLE IF NOT EXISTS tokens_enviados (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            token TEXT NOT NULL,
-            fecha_envio DATETIME DEFAULT CURRENT_TIMESTAMP,
-            destinatarios INTEGER,
-            mensaje_id TEXT
-        )
-    `);
-
-    // Tabla de configuración
-    db.run(`
-        CREATE TABLE IF NOT EXISTS configuracion (
-            clave TEXT PRIMARY KEY,
-            valor TEXT,
-            fecha_actualizacion DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
-
-    // Insertar configuración inicial si no existe
-    db.get("SELECT * FROM configuracion WHERE clave = 'ultimo_token'", (err, row) => {
-        if (!row) {
-            db.run("INSERT INTO configuracion (clave, valor) VALUES ('ultimo_token', '')");
-            db.run("INSERT INTO configuracion (clave, valor) VALUES ('ultimo_token_fecha', '')");
-            db.run("INSERT INTO configuracion (clave, valor) VALUES ('ultimo_envio_fecha', '')");
-        }
-    });
-});
+// ============================================
+// FUNCIONES
+// ============================================
 
 const dbService = {
-    // Destinatarios
+    // ========== DESTINATARIOS ==========
     getDestinatarios: () => {
-        return new Promise((resolve, reject) => {
-            db.all("SELECT * FROM destinatarios WHERE activo = 1 ORDER BY id DESC", (err, rows) => {
-                if (err) reject(err);
-                else resolve(rows);
-            });
-        });
+        return Promise.resolve(datos.destinatarios.filter(d => d.activo !== 0));
     },
 
     addDestinatario: (email, nombre = '') => {
-        return new Promise((resolve, reject) => {
-            db.run(
-                "INSERT OR IGNORE INTO destinatarios (email, nombre) VALUES (?, ?)",
-                [email.toLowerCase(), nombre],
-                function(err) {
-                    if (err) reject(err);
-                    else resolve(this.changes > 0);
-                }
-            );
+        return new Promise((resolve) => {
+            const existe = datos.destinatarios.some(d => d.email === email.toLowerCase());
+            if (!existe) {
+                datos.destinatarios.push({
+                    id: Date.now(),
+                    email: email.toLowerCase(),
+                    nombre: nombre,
+                    activo: 1,
+                    fecha_creacion: new Date().toISOString()
+                });
+                console.log(`✅ Correo agregado: ${email}`);
+                resolve(true);
+            } else {
+                console.log(`⚠️ Correo ya existe: ${email}`);
+                resolve(false);
+            }
         });
     },
 
     removeDestinatario: (email) => {
-        return new Promise((resolve, reject) => {
-            db.run(
-                "UPDATE destinatarios SET activo = 0 WHERE email = ?",
-                [email.toLowerCase()],
-                function(err) {
-                    if (err) reject(err);
-                    else resolve(this.changes > 0);
-                }
-            );
+        return new Promise((resolve) => {
+            const index = datos.destinatarios.findIndex(d => d.email === email.toLowerCase());
+            if (index !== -1) {
+                datos.destinatarios[index].activo = 0;
+                console.log(`✅ Correo eliminado: ${email}`);
+                resolve(true);
+            } else {
+                console.log(`⚠️ Correo no encontrado: ${email}`);
+                resolve(false);
+            }
         });
     },
 
-    // Tokens
-    saveTokenEnviado: (token, destinatarios, mensajeId) => {
-        return new Promise((resolve, reject) => {
-            db.run(
-                "INSERT INTO tokens_enviados (token, destinatarios, mensaje_id) VALUES (?, ?, ?)",
-                [token, destinatarios, mensajeId],
-                function(err) {
-                    if (err) reject(err);
-                    else resolve(this.lastID);
-                }
-            );
+    // ========== TOKENS ==========
+    saveTokenEnviado: (token, cantidad, mensajeId) => {
+        return new Promise((resolve) => {
+            const nuevo = {
+                id: Date.now(),
+                token: token,
+                fecha_envio: new Date().toISOString(),
+                destinatarios: cantidad,
+                mensaje_id: mensajeId
+            };
+            datos.tokensEnviados.push(nuevo);
+            console.log(`✅ Token guardado: ${token}`);
+            resolve(nuevo.id);
         });
     },
 
     getUltimoToken: () => {
-        return new Promise((resolve, reject) => {
-            db.get("SELECT valor FROM configuracion WHERE clave = 'ultimo_token'", (err, row) => {
-                if (err) reject(err);
-                else resolve(row ? row.valor : null);
-            });
-        });
+        return Promise.resolve(datos.configuracion.ultimo_token || null);
     },
 
     setUltimoToken: (token) => {
-        return new Promise((resolve, reject) => {
-            db.run(
-                "UPDATE configuracion SET valor = ?, fecha_actualizacion = CURRENT_TIMESTAMP WHERE clave = 'ultimo_token'",
-                [token],
-                (err) => {
-                    if (err) reject(err);
-                    else resolve();
-                }
-            );
-        });
+        datos.configuracion.ultimo_token = token;
+        datos.configuracion.ultimo_token_fecha = new Date().toISOString();
+        console.log(`✅ Token actualizado: ${token}`);
+        return Promise.resolve();
     },
 
     getUltimoEnvio: () => {
-        return new Promise((resolve, reject) => {
-            db.get("SELECT valor FROM configuracion WHERE clave = 'ultimo_envio_fecha'", (err, row) => {
-                if (err) reject(err);
-                else resolve(row ? row.valor : null);
-            });
-        });
+        return Promise.resolve(datos.configuracion.ultimo_envio_fecha || null);
     },
 
     setUltimoEnvio: (fecha) => {
-        return new Promise((resolve, reject) => {
-            db.run(
-                "UPDATE configuracion SET valor = ?, fecha_actualizacion = CURRENT_TIMESTAMP WHERE clave = 'ultimo_envio_fecha'",
-                [fecha],
-                (err) => {
-                    if (err) reject(err);
-                    else resolve();
-                }
-            );
+        datos.configuracion.ultimo_envio_fecha = fecha;
+        console.log(`✅ Fecha de envío actualizada: ${fecha}`);
+        return Promise.resolve();
+    },
+
+    // ========== ESTADÍSTICAS ==========
+    getEstadisticas: () => {
+        const activos = datos.destinatarios.filter(d => d.activo !== 0);
+        const ultimoEnvio = datos.tokensEnviados.length > 0 ? 
+            datos.tokensEnviados[datos.tokensEnviados.length - 1] : null;
+        
+        return Promise.resolve({
+            total_destinatarios: activos.length,
+            total_envios: datos.tokensEnviados.length,
+            ultimo_token_enviado: ultimoEnvio ? ultimoEnvio.token : null,
+            ultima_fecha_envio: ultimoEnvio ? ultimoEnvio.fecha_envio : null
         });
     },
 
-    getEstadisticas: () => {
-        return new Promise((resolve, reject) => {
-            db.get(`
-                SELECT 
-                    (SELECT COUNT(*) FROM destinatarios WHERE activo = 1) as total_destinatarios,
-                    (SELECT COUNT(*) FROM tokens_enviados) as total_envios,
-                    (SELECT token FROM tokens_enviados ORDER BY id DESC LIMIT 1) as ultimo_token_enviado,
-                    (SELECT fecha_envio FROM tokens_enviados ORDER BY id DESC LIMIT 1) as ultima_fecha_envio
-            `, (err, row) => {
-                if (err) reject(err);
-                else resolve(row || {});
-            });
-        });
+    // ========== DEBUG ==========
+    getDatos: () => {
+        return {
+            destinatarios: datos.destinatarios.filter(d => d.activo !== 0),
+            tokens: datos.tokensEnviados,
+            config: datos.configuracion
+        };
     }
 };
 
