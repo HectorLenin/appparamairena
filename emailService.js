@@ -1,27 +1,24 @@
 const nodemailer = require('nodemailer');
 
 // ============================================
-// TRANSPORTER CON PUERTO 587 (TLS)
+// TRANSPORTER CON APP PASSWORD
 // ============================================
 
 function createTransporter() {
     return nodemailer.createTransport({
         host: 'smtp.gmail.com',
-        port: 587,
-        secure: false,  // TLS (no SSL)
+        port: 465,
+        secure: true,
         auth: {
             user: process.env.ADMIN_EMAIL,
             pass: process.env.EMAIL_PASS
         },
+        connectionTimeout: 60000,
+        greetingTimeout: 60000,
+        socketTimeout: 60000,
         tls: {
-            rejectUnauthorized: false,
-            ciphers: 'HIGH:!SSLv2:!SSLv3:!TLSv1:!TLSv1.1'
-        },
-        connectionTimeout: 30000,
-        greetingTimeout: 30000,
-        socketTimeout: 30000,
-        // Evita que Nodemailer use IPv6 (problema común en Railway)
-        family: 4
+            rejectUnauthorized: false
+        }
     });
 }
 
