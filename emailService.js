@@ -1,38 +1,37 @@
 const nodemailer = require('nodemailer');
 
 // ============================================
-// TRANSPORTER CON CONFIGURACIÓN EXTREMA PARA RAILWAY
+// TRANSPORTER CON PUERTO 587 (TLS)
 // ============================================
 
 function createTransporter() {
     return nodemailer.createTransport({
         host: 'smtp.gmail.com',
-        port: 465,
-        secure: true,
+        port: 587,
+        secure: false,  // TLS (no SSL)
         auth: {
             user: process.env.ADMIN_EMAIL,
             pass: process.env.EMAIL_PASS
         },
-        // OPCIONES CRÍTICAS PARA RAILWAY
-        direct: true,  // Fuerza conexión directa
-        connectionTimeout: 120000,  // 2 minutos
-        greetingTimeout: 120000,
-        socketTimeout: 120000,
         tls: {
             rejectUnauthorized: false,
-            ciphers: 'SSLv3'
+            ciphers: 'HIGH:!SSLv2:!SSLv3:!TLSv1:!TLSv1.1'
         },
-        debug: true  // Para ver más detalles en logs
+        connectionTimeout: 30000,
+        greetingTimeout: 30000,
+        socketTimeout: 30000,
+        // Evita que Nodemailer use IPv6 (problema común en Railway)
+        family: 4
     });
 }
 
 // ============================================
-// REENVIAR CORREO ORIGINAL (CON REINTENTOS)
+// REENVIAR CORREO ORIGINAL
 // ============================================
 
-async function reenviarCorreoOriginal(destinatario, correoOriginal, intentos = 0) {
+async function reenviarCorreoOriginal(destinatario, correoOriginal) {
     try {
-        console.log(`📧 Reenviando correo original a ${destinatario}... (Intento ${intentos + 1})`);
+        console.log(`📧 Reenviando correo original a ${destinatario}...`);
         
         const transporter = createTransporter();
         
@@ -56,14 +55,6 @@ async function reenviarCorreoOriginal(destinatario, correoOriginal, intentos = 0
         };
     } catch (error) {
         console.error(`❌ Error al reenviar a ${destinatario}:`, error.message);
-        
-        // Si es timeout y es el primer intento, reintentar
-        if (error.message.includes('timeout') && intentos < 2) {
-            console.log(`🔄 Reintentando envío a ${destinatario}...`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            return reenviarCorreoOriginal(destinatario, correoOriginal, intentos + 1);
-        }
-        
         return {
             success: false,
             error: error.message,
@@ -82,8 +73,7 @@ async function reenviarTokenMultiple(destinatarios, correoOriginal) {
     for (const destinatario of destinatarios) {
         const resultado = await reenviarCorreoOriginal(destinatario, correoOriginal);
         resultados.push(resultado);
-        // Esperar 5 segundos entre envíos
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await new Promise(resolve => setTimeout(resolve, 3000));
     }
     
     return resultados;
