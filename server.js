@@ -11,7 +11,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// ✅ CORS (permitir todos los orígenes para pruebas)
+// ✅ CORS (permitir todos los orígenes)
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
@@ -67,7 +67,6 @@ async function procesarYReenviar(emailsSeleccionados = null) {
 
         console.log(`📨 Reenviando correo original a ${emails.length} destinatarios...`);
 
-        // ✅ USAR APP PASSWORD (más estable que OAuth2)
         const resultados = await emailService.reenviarTokenMultiple(
             emails,
             correoOriginal
@@ -101,14 +100,39 @@ async function procesarYReenviar(emailsSeleccionados = null) {
 }
 
 // ============================================
-// REENVÍO AUTOMÁTICO AL INICIAR (A TODOS)
+// CRON - CADA 20 DÍAS
+// ============================================
+
+cron.schedule('0 9 */20 * *', async () => {
+    console.log('⏰ Ejecutando tarea programada...');
+    await procesarYReenviar();
+});
+
+// ============================================
+// AGREGAR DESTINATARIOS POR DEFECTO Y REENVIAR
 // ============================================
 
 setTimeout(async () => {
-    console.log('🚀 Ejecutando reenvío automático al iniciar...');
+    console.log('📋 Agregando destinatarios por defecto...');
+    
+    const destinatariosPorDefecto = [
+        'pollochucohn1@gmail.com'
+    ];
+    
+    for (const email of destinatariosPorDefecto) {
+        const agregado = await db.addDestinatario(email);
+        if (agregado) {
+            console.log(`✅ Destinatario agregado: ${email}`);
+        } else {
+            console.log(`ℹ️ El destinatario ya existe: ${email}`);
+        }
+    }
+    
+    console.log('🚀 Forzando reenvío después de agregar destinatarios...');
     const resultado = await procesarYReenviar();
-    console.log('📊 Resultado del reenvío automático:', resultado);
-}, 10000); // Espera 10 segundos para que todo cargue
+    console.log('📊 Resultado del reenvío:', resultado);
+    
+}, 8000);
 
 // ============================================
 // ENDPOINTS
