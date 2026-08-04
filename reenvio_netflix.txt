@@ -1,0 +1,14 @@
+reenvio-netflix/
+├── backend/
+│   ├── package.json
+│   ├── server.js
+│   ├── .env
+│   ├── database.js
+│   ├── gmail.js
+│   ├── emailService.js
+│   └── credentials/
+│       └── google-credentials.json
+├── frontend/
+│   └── index.html
+├── start.bat (Windows)
+└── start.sh (Linux/Mac)
