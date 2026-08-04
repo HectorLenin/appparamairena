@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reenvío Tokens Netflix</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .app {
+            max-width: 700px;
+            width: 100%;
+            background: white;
+            border-radius: 28px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+        }
+
+        .header-icon {
+            width: 50px;
+            height: 50px;
+            background: #fde8ea;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: #e50914;
+        }
+
+        .header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            color: #1a1f2e;
+        }
+
+        .header .badge {
+            margin-left: auto;
+            background: #eef2f7;
+            padding: 6px 16px;
+            border-radius: 40px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #2c4a6e;
+        }
+
+        .header .badge i {
+            margin-right: 5px;
+            color: #1d8b4c;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            background: #f8faff;
+            border-radius: 18px;
+            padding: 18px;
+            border: 1px solid #e5ebf3;
+            margin-bottom: 20px;
+        }
+
+        .status-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .status-item .label {
+            font-size: 12px;
+            color: #6c7f9a;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+
+        .status-item .value {
+            font-size: 15px;
+            font-weight: 600;
+            color: #1a2a44;
+            word-break: break-all;
+        }
+
+        .status-item .value.token {
+            font-family: 'Courier New', monospace;
+            color: #e50914;
+            font-size: 18px;
+            letter-spacing: 1px;
+        }
+
+        .status-item .value.empty {
+            color: #9aafc9;
+            font-weight: 400;
+        }
+
+        .emails-section {
+            background: #ffffff;
+            border-radius: 18px;
+            border: 1px solid #e5ebf3;
+            padding: 18px;
+            margin-bottom: 20px;
+        }
+
+        .emails-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+
+        .emails-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1a2a44;
+        }
+
+        .emails-header h3 i {
+            color: #e50914;
+            margin-right: 8px;
+        }
+
+        .emails-header .count {
+            background: #eef2f7;
+            padding: 4px 14px;
+            border-radius: 40px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #2c4a6e;
+        }
+
+        .email-list {
+            max-height: 220px;
+            overflow-y: auto;
+            margin-bottom: 14px;
+        }
+
+        .email-list::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .email-list::-webkit-scrollbar-track {
+            background: #eef3fa;
+            border-radius: 8px;
+        }
+
+        .email-list::-webkit-scrollbar-thumb {
+            background: #c4d3e6;
+            border-radius: 8px;
+        }
+
+        .email-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            background: #f8faff;
+            border-radius: 40px;
+            margin-bottom: 6px;
+            border: 1px solid #edf2f8;
+            transition: 0.2s;
+            cursor: pointer;
+        }
+
+        .email-item:hover {
+            background: #f0f5ff;
+        }
+
+        .email-item.selected {
+            background: #e8f0fe;
+            border-color: #1a73e8;
+            box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+        }
+
+        .email-item .email-text {
+            font-size: 14px;
+            color: #1a2a44;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .email-item .email-text i {
+            color: #4b6f94;
+            font-size: 14px;
+        }
+
+        .email-item .checkbox {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid #d5dfeb;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.2s;
+            flex-shrink: 0;
+        }
+
+        .email-item.selected .checkbox {
+            background: #1a73e8;
+            border-color: #1a73e8;
+        }
+
+        .email-item.selected .checkbox i {
+            color: white;
+            font-size: 12px;
+        }
+
+        .email-item .checkbox i {
+            opacity: 0;
+            transition: 0.2s;
+        }
+
+        .email-item.selected .checkbox i {
+            opacity: 1;
+        }
+
+        .email-item .actions {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            margin-left: 8px;
+        }
+
+        .email-item .remove-btn {
+            background: none;
+            border: none;
+            color: #9aafc9;
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 30px;
+            transition: 0.2s;
+        }
+
+        .email-item .remove-btn:hover {
+            background: #fee8ea;
+            color: #d43b4b;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #7e93af;
+            padding: 20px 0;
+            font-size: 14px;
+        }
+
+        .empty-state i {
+            font-size: 30px;
+            display: block;
+            margin-bottom: 8px;
+            color: #d5dfeb;
+        }
+
+        .add-email-form {
+            display: flex;
+            gap: 10px;
+        }
+
+        .add-email-form input {
+            flex: 1;
+            padding: 10px 16px;
+            border-radius: 60px;
+            border: 1px solid #d5dfeb;
+            font-size: 14px;
+            outline: none;
+            background: #f9fcff;
+            transition: 0.2s;
+        }
+
+        .add-email-form input:focus {
+            border-color: #e50914;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(229, 9, 20, 0.06);
+        }
+
+        .add-email-form button {
+            background: #0a1a2e;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 60px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: 0.15s;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .add-email-form button:hover {
+            background: #1f3350;
+            transform: scale(0.98);
+        }
+
+        .selection-actions {
+            display: flex;
+            gap: 10px;
+            margin: 12px 0 16px;
+            flex-wrap: wrap;
+        }
+
+        .selection-actions button {
+            padding: 6px 16px;
+            border-radius: 30px;
+            border: 1px solid #d5dfeb;
+            background: white;
+            color: #1a2a44;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .selection-actions button:hover {
+            background: #f0f5ff;
+            border-color: #1a73e8;
+        }
+
+        .selection-actions button i {
+            font-size: 12px;
+        }
+
+        .btn-reenviar {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #e50914, #b20710);
+            color: white;
+            border: none;
+            border-radius: 60px;
+            font-weight: 700;
+            font-size: 16px;
+            cursor: pointer;
+            transition: 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .btn-reenviar:hover:not(:disabled) {
+            transform: scale(0.98);
+            box-shadow: 0 8px 25px rgba(229, 9, 20, 0.3);
+        }
+
+        .btn-reenviar:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-reenviar .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top: 3px solid white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .footer {
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid #edf2f8;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: #6f85a2;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .footer .info {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .footer .info i {
+            color: #889bb3;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #1a2a44;
+            color: white;
+            padding: 16px 24px;
+            border-radius: 16px;
+            font-size: 14px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.2);
+            display: none;
+            align-items: center;
+            gap: 12px;
+            max-width: 400px;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .notification.show {
+            display: flex;
+        }
+
+        .notification i {
+            font-size: 20px;
+        }
+
+        .notification.success i { color: #4caf50; }
+        .notification.error i { color: #ff6b6b; }
+        .notification.info i { color: #64b5f6; }
+
+        @media (max-width: 480px) {
+            .app { padding: 16px; }
+            .status-grid { grid-template-columns: 1fr; }
+            .add-email-form { flex-direction: column; }
+            .add-email-form button { width: 100%; justify-content: center; }
+            .header .badge { margin-left: 0; }
+            .selection-actions button { flex: 1; justify-content: center; }
+        }
+
+        .manual-token-section {
+            background: #fff8e1;
+            border: 1px solid #ffd54f;
+            border-radius: 18px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .manual-token-section h4 {
+            font-size: 14px;
+            color: #f57f17;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .manual-token-section .input-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .manual-token-section .input-group input {
+            flex: 1;
+            padding: 10px 16px;
+            border-radius: 60px;
+            border: 1px solid #ffd54f;
+            font-size: 14px;
+            outline: none;
+            background: white;
+        }
+
+        .manual-token-section .input-group input:focus {
+            border-color: #f57f17;
+            box-shadow: 0 0 0 3px rgba(245, 127, 23, 0.1);
+        }
+
+        .manual-token-section .input-group button {
+            background: #f57f17;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 60px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: 0.15s;
+            white-space: nowrap;
+        }
+
+        .manual-token-section .input-group button:hover {
+            background: #e65100;
+            transform: scale(0.98);
+        }
+    </style>
+</head>
+<body>
+
+<div class="app">
+    <!-- Header -->
+    <div class="header">
+        <div class="header-icon"><i class="fas fa-envelope-open-text"></i></div>
+        <h1>Reenvío Netflix</h1>
+        <span class="badge"><i class="fas fa-check-circle"></i> Activo</span>
+    </div>
+
+    <!-- Estado -->
+    <div class="status-grid">
+        <div class="status-item">
+            <span class="label"><i class="fas fa-key"></i> Último token</span>
+            <span class="value token" id="ultimoToken">—</span>
+        </div>
+        <div class="status-item">
+            <span class="label"><i class="far fa-calendar-alt"></i> Fecha token</span>
+            <span class="value" id="fechaToken">—</span>
+        </div>
+        <div class="status-item">
+            <span class="label"><i class="fas fa-users"></i> Destinatarios</span>
+            <span class="value" id="totalDestinatarios">0</span>
+        </div>
+        <div class="status-item">
+            <span class="label"><i class="fas fa-clock"></i> Último reenvío</span>
+            <span class="value" id="ultimoReenvio">—</span>
+        </div>
+    </div>
+
+    <!-- Ingreso manual de token (emergencia) -->
+    <div class="manual-token-section">
+        <h4><i class="fas fa-hand-holding-heart"></i> Ingreso manual de token (emergencia)</h4>
+        <div class="input-group">
+            <input type="text" id="manualTokenInput" placeholder="Ej: NF-8H3K-9L2P" />
+            <button id="guardarTokenManualBtn"><i class="fas fa-save"></i> Guardar</button>
+        </div>
+    </div>
+
+    <!-- Correos destino -->
+    <div class="emails-section">
+        <div class="emails-header">
+            <h3><i class="fas fa-at"></i> Correos destino</h3>
+            <span class="count" id="emailCount">0</span>
+        </div>
+        <div class="email-list" id="emailList"></div>
+
+        <!-- Acciones de selección -->
+        <div class="selection-actions">
+            <button id="selectAllBtn"><i class="fas fa-check-double"></i> Seleccionar todos</button>
+            <button id="deselectAllBtn"><i class="fas fa-times"></i> Deseleccionar todos</button>
+            <button id="selectNoneBtn"><i class="fas fa-undo"></i> Limpiar selección</button>
+            <span style="margin-left: auto; font-size: 13px; color: #6c7f9a;" id="selectedCount">0 seleccionados</span>
+        </div>
+
+        <div class="add-email-form">
+            <input type="email" id="newEmailInput" placeholder="cliente@dominio.com" />
+            <button id="addEmailBtn"><i class="fas fa-plus"></i> Agregar</button>
+        </div>
+    </div>
+
+    <!-- Botón reenviar -->
+    <button class="btn-reenviar" id="reenviarBtn">
+        <i class="fas fa-paper-plane"></i>
+        Reenviar token a seleccionados
+    </button>
+
+    <!-- Footer -->
+    <div class="footer">
+        <span class="info"><i class="fas fa-envelope"></i> <span id="adminEmail">admin@correo.com</span></span>
+        <span class="info"><i class="fas fa-sync-alt"></i> Cada <span id="cicloDias">20</span> días</span>
+        <span class="info"><i class="fas fa-check-circle" style="color:#1d8b4c;"></i> Automático</span>
+    </div>
+</div>
+
+<!-- Notificación -->
+<div class="notification" id="notification">
+    <i class="fas fa-info-circle"></i>
+    <span id="notificationMessage">Mensaje</span>
+</div>
+
+<script>
+    // ============================================
+    // CONFIGURACIÓN - URL DEL BACKEND EN RAILWAY
+    // ============================================
+    
+    // ✅ URL de tu backend en Railway
+    const API_URL = 'https://appparamairena-production.up.railway.app/api';
+
+    // ============================================
+    // PERSISTENCIA EN LOCALSTORAGE
+    // ============================================
+
+    function guardarCorreosEnLocal(correos) {
+        localStorage.setItem('correosDestino', JSON.stringify(correos));
+    }
+
+    function cargarCorreosDeLocal() {
+        const data = localStorage.getItem('correosDestino');
+        return data ? JSON.parse(data) : [];
+    }
+
+    function guardarTokenEnLocal(token) {
+        localStorage.setItem('tokenManual', token);
+    }
+
+    function cargarTokenDeLocal() {
+        return localStorage.getItem('tokenManual') || '';
+    }
+
+    // ============================================
+    // CÓDIGO PRINCIPAL
+    // ============================================
+
+    let autoRefreshInterval = null;
+    let selectedEmails = new Set();
+    let correosLocales = []; // Para mantener sincronía
+
+    // Elementos
+    const ultimoToken = document.getElementById('ultimoToken');
+    const fechaToken = document.getElementById('fechaToken');
+    const totalDestinatarios = document.getElementById('totalDestinatarios');
+    const ultimoReenvio = document.getElementById('ultimoReenvio');
+    const emailList = document.getElementById('emailList');
+    const emailCount = document.getElementById('emailCount');
+    const newEmailInput = document.getElementById('newEmailInput');
+    const addEmailBtn = document.getElementById('addEmailBtn');
+    const reenviarBtn = document.getElementById('reenviarBtn');
+    const selectAllBtn = document.getElementById('selectAllBtn');
+    const deselectAllBtn = document.getElementById('deselectAllBtn');
+    const selectNoneBtn = document.getElementById('selectNoneBtn');
+    const selectedCount = document.getElementById('selectedCount');
+    const notification = document.getElementById('notification');
+    const notificationMessage = document.getElementById('notificationMessage');
+    const adminEmail = document.getElementById('adminEmail');
+    const cicloDias = document.getElementById('cicloDias');
+    const manualTokenInput = document.getElementById('manualTokenInput');
+    const guardarTokenManualBtn = document.getElementById('guardarTokenManualBtn');
+
+    // ============================================
+    // NOTIFICACIONES
+    // ============================================
+
+    function showNotification(message, type = 'info') {
+        const icon = notification.querySelector('i');
+        notification.className = 'notification show';
+        notification.style.background = '#1a2a44';
+        
+        if (type === 'success') {
+            icon.className = 'fas fa-check-circle';
+            notification.style.background = '#1e7e34';
+        } else if (type === 'error') {
+            icon.className = 'fas fa-exclamation-circle';
+            notification.style.background = '#b71c1c';
+        } else if (type === 'info') {
+            icon.className = 'fas fa-info-circle';
+            notification.style.background = '#1a3a5c';
+        }
+        
+        notificationMessage.textContent = message;
+        
+        clearTimeout(notification._timeout);
+        notification._timeout = setTimeout(() => {
+            notification.classList.remove('show');
+        }, 5000);
+    }
+
+    // ============================================
+    // API FUNCTIONS
+    // ============================================
+
+    async function fetchEstado() {
+        try {
+            const response = await fetch(`${API_URL}/estado`);
+            if (!response.ok) throw new Error('Error al obtener estado');
+            const data = await response.json();
+            if (data.success) {
+                return data.estado;
+            }
+            return null;
+        } catch (error) {
+            console.error('Error fetching estado:', error);
+            return null;
+        }
+    }
+
+    async function fetchDestinatarios() {
+        try {
+            const response = await fetch(`${API_URL}/destinatarios`);
+            if (!response.ok) throw new Error('Error al obtener destinatarios');
+            const data = await response.json();
+            if (data.success) {
+                return data.destinatarios;
+            }
+            return [];
+        } catch (error) {
+            console.error('Error fetching destinatarios:', error);
+            return [];
+        }
+    }
+
+    async function addDestinatario(email) {
+        try {
+            const response = await fetch(`${API_URL}/destinatarios`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+            const data = await response.json();
+            if (data.success) {
+                // Guardar en localStorage localmente también
+                const correos = cargarCorreosDeLocal();
+                if (!correos.includes(email)) {
+                    correos.push(email);
+                    guardarCorreosEnLocal(correos);
+                }
+                showNotification(`✅ ${email} agregado`, 'success');
+                return true;
+            } else {
+                showNotification(data.error || 'Error al agregar', 'error');
+                return false;
+            }
+        } catch (error) {
+            showNotification('Error de conexión', 'error');
+            return false;
+        }
+    }
+
+    async function removeDestinatario(email) {
+        try {
+            const response = await fetch(`${API_URL}/destinatarios/${encodeURIComponent(email)}`, {
+                method: 'DELETE'
+            });
+            const data = await response.json();
+            if (data.success) {
+                // Eliminar de localStorage localmente
+                let correos = cargarCorreosDeLocal();
+                correos = correos.filter(e => e !== email);
+                guardarCorreosEnLocal(correos);
+                showNotification(`✗ ${email} eliminado`, 'info');
+                return true;
+            }
+            return false;
+        } catch (error) {
+            showNotification('Error al eliminar', 'error');
+            return false;
+        }
+    }
+
+    async function guardarTokenManual(token) {
+        try {
+            const response = await fetch(`${API_URL}/token/manual`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token })
+            });
+            const data = await response.json();
+            if (data.success) {
+                // Guardar en localStorage localmente
+                guardarTokenEnLocal(token);
+                showNotification(`✅ Token guardado manualmente: ${token}`, 'success');
+                await actualizarUI();
+                return true;
+            } else {
+                showNotification(data.error || 'Error al guardar token', 'error');
+                return false;
+            }
+        } catch (error) {
+            showNotification('Error de conexión', 'error');
+            return false;
+        }
+    }
+
+    async function forzarReenvio(emails) {
+        if (emails.length === 0) {
+            showNotification('⚠️ Selecciona al menos un destinatario', 'error');
+            return;
+        }
+
+        reenviarBtn.disabled = true;
+        reenviarBtn.innerHTML = '<span class="loading"></span> Enviando...';
+        
+        try {
+            const response = await fetch(`${API_URL}/reenviar`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ emails })
+            });
+            const data = await response.json();
+            if (data.success) {
+                showNotification(`✅ Token reenviado a ${emails.length} destinatarios`, 'success');
+                setTimeout(() => {
+                    actualizarUI();
+                }, 3000);
+            } else {
+                showNotification(data.error || 'Error al reenviar', 'error');
+            }
+        } catch (error) {
+            showNotification('Error de conexión con el servidor', 'error');
+        } finally {
+            reenviarBtn.disabled = false;
+            reenviarBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Reenviar token a seleccionados';
+        }
+    }
+
+    // ============================================
+    // UI RENDER
+    // ============================================
+
+    function toggleEmail(email) {
+        if (selectedEmails.has(email)) {
+            selectedEmails.delete(email);
+        } else {
+            selectedEmails.add(email);
+        }
+        renderEmailList(correosLocales);
+        updateSelectedCount();
+    }
+
+    function updateSelectedCount() {
+        selectedCount.textContent = `${selectedEmails.size} seleccionados`;
+    }
+
+    async function actualizarUI() {
+        try {
+            const estado = await fetchEstado();
+            if (estado) {
+                ultimoToken.textContent = estado.ultimo_token || '—';
+                ultimoToken.classList.toggle('empty', !estado.ultimo_token);
+                
+                fechaToken.textContent = estado.ultimo_envio ? 
+                    new Date(estado.ultimo_envio).toLocaleString() : '—';
+                
+                totalDestinatarios.textContent = estado.total_destinatarios || 0;
+                
+                ultimoReenvio.textContent = estado.ultima_fecha_envio ? 
+                    new Date(estado.ultima_fecha_envio).toLocaleString() : '—';
+                
+                adminEmail.textContent = estado.admin_email || 'admin@correo.com';
+                cicloDias.textContent = estado.ciclo_dias || 20;
+            }
+
+            // Obtener correos del servidor y sincronizar con localStorage
+            const destinatariosServidor = await fetchDestinatarios();
+            
+            // Cargar correos locales y sincronizar
+            let correosLocal = cargarCorreosDeLocal();
+            
+            // Si hay correos en el servidor que no están en local, agregarlos
+            destinatariosServidor.forEach(email => {
+                if (!correosLocal.includes(email)) {
+                    correosLocal.push(email);
+                }
+            });
+            
+            // Si hay correos en local que no están en el servidor, sincronizar
+            // (esto podría pasar si se eliminaron del servidor)
+            const correosValidos = correosLocal.filter(email => 
+                destinatariosServidor.includes(email)
+            );
+            
+            // Guardar la lista sincronizada
+            guardarCorreosEnLocal(correosValidos);
+            correosLocales = correosValidos;
+            
+            // Limpiar selecciones inválidas
+            const validEmails = new Set(correosLocales);
+            for (const email of selectedEmails) {
+                if (!validEmails.has(email)) {
+                    selectedEmails.delete(email);
+                }
+            }
+            
+            renderEmailList(correosLocales);
+            updateSelectedCount();
+            
+        } catch (error) {
+            console.error('Error actualizando UI:', error);
+            showNotification('Error al actualizar la interfaz', 'error');
+        }
+    }
+
+    function renderEmailList(emails) {
+        emailList.innerHTML = '';
+        
+        if (!emails || emails.length === 0) {
+            emailList.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-inbox"></i>
+                    No hay correos destino configurados
+                </div>
+            `;
+            emailCount.textContent = '0';
+            return;
+        }
+
+        emails.forEach(email => {
+            const div = document.createElement('div');
+            div.className = 'email-item';
+            if (selectedEmails.has(email)) {
+                div.classList.add('selected');
+            }
+            
+            div.innerHTML = `
+                <span class="email-text">
+                    <i class="fas fa-user-circle"></i>
+                    ${email}
+                </span>
+                <div class="checkbox">
+                    <i class="fas fa-check"></i>
+                </div>
+                <div class="actions">
+                    <button class="remove-btn" data-email="${email}">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `;
+
+            div.addEventListener('click', function(e) {
+                if (e.target.closest('.remove-btn')) return;
+                const emailText = this.querySelector('.email-text').textContent.trim();
+                toggleEmail(emailText);
+            });
+
+            emailList.appendChild(div);
+        });
+
+        document.querySelectorAll('.remove-btn').forEach(btn => {
+            btn.addEventListener('click', async function(e) {
+                e.stopPropagation();
+                const email = this.dataset.email;
+                if (selectedEmails.has(email)) {
+                    selectedEmails.delete(email);
+                }
+                const success = await removeDestinatario(email);
+                if (success) {
+                    await actualizarUI();
+                }
+            });
+        });
+
+        emailCount.textContent = emails.length;
+    }
+
+    // ============================================
+    // EVENTOS
+    // ============================================
+
+    // Agregar email
+    addEmailBtn.addEventListener('click', async () => {
+        const email = newEmailInput.value.trim();
+        if (!email || !email.includes('@')) {
+            showNotification('Ingresa un correo válido', 'error');
+            return;
+        }
+        const success = await addDestinatario(email);
+        if (success) {
+            newEmailInput.value = '';
+            selectedEmails.add(email);
+            await actualizarUI();
+        }
+    });
+
+    newEmailInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addEmailBtn.click();
+        }
+    });
+
+    // Guardar token manual
+    guardarTokenManualBtn.addEventListener('click', async () => {
+        const token = manualTokenInput.value.trim();
+        if (!token || token.length < 5) {
+            showNotification('Ingresa un token válido (ej: NF-8H3K-9L2P)', 'error');
+            return;
+        }
+        await guardarTokenManual(token);
+        manualTokenInput.value = '';
+    });
+
+    manualTokenInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            guardarTokenManualBtn.click();
+        }
+    });
+
+    // Seleccionar todos
+    selectAllBtn.addEventListener('click', async () => {
+        const destinatarios = await fetchDestinatarios();
+        destinatarios.forEach(email => selectedEmails.add(email));
+        renderEmailList(destinatarios);
+        updateSelectedCount();
+        showNotification(`✅ ${destinatarios.length} destinatarios seleccionados`, 'info');
+    });
+
+    // Deseleccionar todos
+    deselectAllBtn.addEventListener('click', async () => {
+        selectedEmails.clear();
+        renderEmailList(correosLocales);
+        updateSelectedCount();
+        showNotification('✅ Selección limpiada', 'info');
+    });
+
+    selectNoneBtn.addEventListener('click', async () => {
+        selectedEmails.clear();
+        renderEmailList(correosLocales);
+        updateSelectedCount();
+        showNotification('✅ Selección limpiada', 'info');
+    });
+
+    // Reenviar
+    reenviarBtn.addEventListener('click', async () => {
+        const emails = Array.from(selectedEmails);
+        await forzarReenvio(emails);
+    });
+
+    // ============================================
+    // INICIALIZACIÓN
+    // ============================================
+
+    async function init() {
+        // Cargar token manual guardado (si existe)
+        const tokenGuardado = cargarTokenDeLocal();
+        if (tokenGuardado) {
+            manualTokenInput.value = tokenGuardado;
+        }
+
+        await actualizarUI();
+        
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+        }
+        autoRefreshInterval = setInterval(actualizarUI, 30000);
+        
+        setTimeout(() => {
+            showNotification('✅ Sistema listo. Los correos y tokens ahora persisten al recargar.', 'success');
+        }, 500);
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+
+    window.addEventListener('beforeunload', () => {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+        }
+    });
+</script>
+
+</body>
+</html>
