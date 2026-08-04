@@ -12,6 +12,8 @@ const datos = {
     }
 };
 
+let ultimoCorreo = null;
+
 // ============================================
 // FUNCIONES
 // ============================================
@@ -107,12 +109,24 @@ const dbService = {
         });
     },
 
+    // ========== CORREO ==========
+    getUltimoCorreo: () => {
+        return Promise.resolve(ultimoCorreo);
+    },
+
+    setUltimoCorreo: (correo) => {
+        ultimoCorreo = correo;
+        console.log('📧 Correo guardado:', correo?.subject || 'Sin asunto');
+        return Promise.resolve();
+    },
+
     // ========== DEBUG ==========
     getDatos: () => {
         return {
             destinatarios: datos.destinatarios.filter(d => d.activo !== 0),
             tokens: datos.tokensEnviados,
-            config: datos.configuracion
+            config: datos.configuracion,
+            ultimoCorreo: ultimoCorreo
         };
     }
 };
