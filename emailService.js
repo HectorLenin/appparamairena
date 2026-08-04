@@ -17,17 +17,12 @@ function createTransporter() {
     });
 }
 
-// ============================================
-// REENVIAR CORREO ORIGINAL (vía Nodemailer)
-// ============================================
-
 async function reenviarCorreoOriginal(destinatario, correoOriginal) {
     try {
         console.log(`📧 Reenviando correo original a ${destinatario}...`);
         
         const transporter = createTransporter();
         
-        // Usar el contenido HTML original del correo de Netflix
         const htmlContent = correoOriginal.cuerpoHTML || correoOriginal.cuerpoTexto || '';
 
         const mailOptions = {
@@ -55,10 +50,6 @@ async function reenviarCorreoOriginal(destinatario, correoOriginal) {
         };
     }
 }
-
-// ============================================
-// REENVIAR A MÚLTIPLES DESTINATARIOS
-// ============================================
 
 async function reenviarTokenMultiple(destinatarios, correoOriginal) {
     const resultados = [];
