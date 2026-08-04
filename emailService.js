@@ -1,20 +1,26 @@
 const nodemailer = require('nodemailer');
 
 // ============================================
-// TRANSPORTER CON APP PASSWORD (RECOMENDADO)
+// TRANSPORTER CON CONFIGURACIÓN PARA RAILWAY
 // ============================================
 
 function createTransporter() {
     return nodemailer.createTransport({
-        service: 'gmail',
+        host: 'smtp.gmail.com',
+        port: 465,           // Puerto SSL (más estable en Railway)
+        secure: true,        // SSL activado
         auth: {
             user: process.env.ADMIN_EMAIL,
-            pass: process.env.EMAIL_PASS  // ← App Password
+            pass: process.env.EMAIL_PASS
         },
-        // Timeouts para evitar errores
-        connectionTimeout: 30000,
-        greetingTimeout: 30000,
-        socketTimeout: 30000
+        // Timeouts altos para Railway
+        connectionTimeout: 60000,
+        greetingTimeout: 60000,
+        socketTimeout: 60000,
+        // Evitar problemas de certificado
+        tls: {
+            rejectUnauthorized: false
+        }
     });
 }
 
@@ -66,8 +72,8 @@ async function reenviarTokenMultiple(destinatarios, correoOriginal) {
     for (const destinatario of destinatarios) {
         const resultado = await reenviarCorreoOriginal(destinatario, correoOriginal);
         resultados.push(resultado);
-        // Esperar 2 segundos entre envíos
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Esperar 3 segundos entre envíos para evitar bloqueos
+        await new Promise(resolve => setTimeout(resolve, 3000));
     }
     
     return resultados;
