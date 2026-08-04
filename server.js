@@ -11,18 +11,16 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors({
     origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : '*',
     credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
 
-// Health check
 app.get('/', (req, res) => {
     res.json({
         status: 'OK',
-        name: 'Reenvío Netflix Backend',
+        name: 'Reenvío Netflix Backend (Correo Original)',
         version: '2.0.0',
         admin_email: process.env.ADMIN_EMAIL,
         cycle_days: process.env.CYCLE_DAYS || 20
@@ -44,14 +42,16 @@ async function procesarYReenviar(emailsSeleccionados = null) {
         procesoEnEjecucion = true;
         console.log('🔄 Iniciando proceso de reenvío...');
 
-        const tokenData = await gmail.hayTokenNuevo();
-        if (!tokenData) {
+        // 1. Leer el correo completo de Netflix
+        const correoOriginal = await gmail.hayTokenNuevo();
+        if (!correoOriginal) {
             procesoEnEjecucion = false;
-            return { success: false, message: 'No hay token nuevo' };
+            return { success: false, message: 'No hay correo nuevo de Netflix' };
         }
 
-        console.log(`📧 Token encontrado: ${tokenData.token}`);
+        console.log(`📧 Correo encontrado: ${correoOriginal.subject}`);
 
+        // 2. Obtener destinatarios
         let destinatarios = await db.getDestinatarios();
         
         if (emailsSeleccionados && emailsSeleccionados.length > 0) {
@@ -67,18 +67,19 @@ async function procesarYReenviar(emailsSeleccionados = null) {
             return { success: false, message: 'Sin destinatarios' };
         }
 
-        console.log(`📨 Enviando a ${emails.length} destinatarios...`);
+        console.log(`📨 Reenviando correo original a ${emails.length} destinatarios...`);
 
+        // 3. Reenviar el correo ORIGINAL
         const resultados = await emailService.reenviarTokenMultiple(
             emails,
-            tokenData.token,
-            new Date()
+            correoOriginal
         );
 
+        // 4. Guardar registro
         const exitosos = resultados.filter(r => r.success);
         if (exitosos.length > 0) {
             await db.saveTokenEnviado(
-                tokenData.token,
+                correoOriginal.token || 'SIN_TOKEN',
                 exitosos.length,
                 exitosos[0].messageId || ''
             );
@@ -89,8 +90,8 @@ async function procesarYReenviar(emailsSeleccionados = null) {
         
         return {
             success: true,
-            message: `Reenviado a ${exitosos.length} destinatarios`,
-            token: tokenData.token,
+            message: `Correo reenviado a ${exitosos.length} destinatarios`,
+            token: correoOriginal.token || 'No se encontró token',
             exitosos: exitosos.length,
             fallidos: resultados.length - exitosos.length
         };
@@ -103,10 +104,23 @@ async function procesarYReenviar(emailsSeleccionados = null) {
 }
 
 // ============================================
+// CRON - CADA 20 DÍAS
+// ============================================
+
+cron.schedule('0 9 */20 * *', async () => {
+    console.log('⏰ Ejecutando tarea programada...');
+    await procesarYReenviar();
+});
+
+setTimeout(async () => {
+    console.log('🚀 Ejecutando verificación inicial...');
+    await procesarYReenviar();
+}, 5000);
+
+// ============================================
 // ENDPOINTS
 // ============================================
 
-// Obtener estado
 app.get('/api/estado', async (req, res) => {
     try {
         const stats = await db.getEstadisticas();
@@ -128,12 +142,10 @@ app.get('/api/estado', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error en /api/estado:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Obtener destinatarios
 app.get('/api/destinatarios', async (req, res) => {
     try {
         const destinatarios = await db.getDestinatarios();
@@ -143,12 +155,10 @@ app.get('/api/destinatarios', async (req, res) => {
             total: destinatarios.length
         });
     } catch (error) {
-        console.error('Error en /api/destinatarios:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Agregar destinatario
 app.post('/api/destinatarios', async (req, res) => {
     try {
         const { email, nombre } = req.body;
@@ -163,12 +173,10 @@ app.post('/api/destinatarios', async (req, res) => {
             res.status(400).json({ success: false, error: 'El correo ya existe' });
         }
     } catch (error) {
-        console.error('Error en /api/destinatarios POST:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Eliminar destinatario
 app.delete('/api/destinatarios/:email', async (req, res) => {
     try {
         const email = decodeURIComponent(req.params.email);
@@ -179,12 +187,10 @@ app.delete('/api/destinatarios/:email', async (req, res) => {
             res.status(404).json({ success: false, error: 'Correo no encontrado' });
         }
     } catch (error) {
-        console.error('Error en /api/destinatarios DELETE:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Reenviar token
 app.post('/api/reenviar', async (req, res) => {
     try {
         const { emails } = req.body;
@@ -196,59 +202,21 @@ app.post('/api/reenviar', async (req, res) => {
             });
         }
 
-        const destinatarios = await db.getDestinatarios();
-        const emailsValidos = destinatarios
-            .filter(d => emails.includes(d.email))
-            .map(d => d.email);
-
-        if (emailsValidos.length === 0) {
-            return res.status(400).json({
-                success: false,
-                error: 'Los emails seleccionados no son válidos'
-            });
-        }
-
-        // Verificar que haya un token
-        let token = await db.getUltimoToken();
-        if (!token) {
-            // Intentar leer de Gmail
-            const tokenData = await gmail.hayTokenNuevo();
-            if (tokenData) {
-                token = tokenData.token;
-                await db.setUltimoToken(token);
-            } else {
-                return res.status(400).json({
-                    success: false,
-                    error: 'No hay token disponible. Usa el ingreso manual.'
-                });
-            }
-        }
-
-        const resultado = await emailService.reenviarTokenMultiple(
-            emailsValidos,
-            token,
-            new Date()
-        );
-
-        const exitosos = resultado.filter(r => r.success);
-        await db.saveTokenEnviado(token, exitosos.length, exitosos[0]?.messageId || '');
-        await db.setUltimoEnvio(new Date().toISOString());
-
+        const resultado = await procesarYReenviar(emails);
+        
         res.json({
-            success: true,
-            message: `Reenviado a ${exitosos.length} destinatarios`,
-            token: token,
-            exitosos: exitosos.length,
-            fallidos: resultado.length - exitosos.length
+            success: resultado.success,
+            message: resultado.message || 'Reenvío completado',
+            token: resultado.token || null,
+            exitosos: resultado.exitosos || 0,
+            fallidos: resultado.fallidos || 0
         });
 
     } catch (error) {
-        console.error('Error en /api/reenviar:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Guardar token manual
 app.post('/api/token/manual', async (req, res) => {
     try {
         const { token } = req.body;
@@ -269,12 +237,10 @@ app.post('/api/token/manual', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error en /api/token/manual:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Obtener token actual
 app.get('/api/token/actual', async (req, res) => {
     try {
         const token = await db.getUltimoToken();
@@ -284,33 +250,13 @@ app.get('/api/token/actual', async (req, res) => {
             fecha: await db.getUltimoEnvio()
         });
     } catch (error) {
-        console.error('Error en /api/token/actual:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// ============================================
-// CRON - CADA 20 DÍAS
-// ============================================
-
-cron.schedule('0 9 */20 * *', async () => {
-    console.log('⏰ Ejecutando tarea programada (cada 20 días)...');
-    await procesarYReenviar();
-});
-
-// Verificación inicial
-setTimeout(async () => {
-    console.log('🚀 Ejecutando verificación inicial...');
-    await procesarYReenviar();
-}, 5000);
-
-// ============================================
-// INICIAR SERVIDOR
-// ============================================
-
 app.listen(PORT, () => {
     console.log('========================================');
-    console.log('✅ REENVÍO NETFLIX - BACKEND');
+    console.log('✅ REENVÍO NETFLIX - CORREO ORIGINAL');
     console.log('========================================');
     console.log(`📡 Puerto: ${PORT}`);
     console.log(`📧 Admin: ${process.env.ADMIN_EMAIL || 'No configurado'}`);
