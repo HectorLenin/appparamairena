@@ -1,24 +1,34 @@
 const nodemailer = require('nodemailer');
+const { google } = require('googleapis');
 
 // ============================================
-// TRANSPORTER CON APP PASSWORD
+// OAUTH2 PARA RENDER
 // ============================================
 
 function createTransporter() {
+    const oAuth2Client = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        'https://developers.google.com/oauthplayground'
+    );
+
+    oAuth2Client.setCredentials({
+        refresh_token: process.env.GOOGLE_REFRESH_TOKEN
+    });
+
     return nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 465,
-        secure: true,
+        service: 'gmail',
         auth: {
+            type: 'OAuth2',
             user: process.env.ADMIN_EMAIL,
-            pass: process.env.EMAIL_PASS
+            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+            refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
+            accessToken: oAuth2Client.credentials.access_token
         },
         connectionTimeout: 60000,
         greetingTimeout: 60000,
-        socketTimeout: 60000,
-        tls: {
-            rejectUnauthorized: false
-        }
+        socketTimeout: 60000
     });
 }
 
