@@ -5,7 +5,6 @@ let oAuth2Client = null;
 
 function initOAuth2() {
     if (!oAuth2Client) {
-        console.log('🔑 Inicializando OAuth2...');
         oAuth2Client = new google.auth.OAuth2(
             process.env.GOOGLE_CLIENT_ID,
             process.env.GOOGLE_CLIENT_SECRET,
@@ -19,23 +18,25 @@ function initOAuth2() {
     return oAuth2Client;
 }
 
-async function leerTokensDeGmail() {
+// ============================================
+// LEER CORREO COMPLETO DE NETFLIX
+// ============================================
+
+async function leerCorreoCompleto() {
     try {
-        console.log('📨 Buscando correos de Netflix...');
+        console.log('📨 Buscando correo de Netflix...');
         
         const auth = initOAuth2();
         const gmail = google.gmail({ version: 'v1', auth });
 
-        // Buscar correos de Netflix (últimos 7 días)
+        // Buscar el correo más reciente de Netflix (últimos 7 días)
         const fechaLimite = Math.floor(Date.now() / 1000 - 7 * 24 * 60 * 60);
         const query = `from:netflix.com after:${fechaLimite}`;
-        
-        console.log('🔍 Query:', query);
         
         const response = await gmail.users.messages.list({
             userId: 'me',
             q: query,
-            maxResults: 10
+            maxResults: 1  // Solo el más reciente
         });
 
         const messages = response.data.messages || [];
@@ -45,75 +46,176 @@ async function leerTokensDeGmail() {
             return null;
         }
 
-        console.log(`📧 Encontrados ${messages.length} correos de Netflix`);
+        const messageId = messages[0].id;
+        console.log(`📧 Correo encontrado: ${messageId}`);
 
-        // Obtener el correo más reciente
-        const lastMessage = messages[0];
+        // Obtener el correo COMPLETO (incluyendo cuerpo y adjuntos)
         const messageData = await gmail.users.messages.get({
             userId: 'me',
-            id: lastMessage.id,
+            id: messageId,
             format: 'full'
         });
 
-        // Extraer cuerpo del correo
-        let cuerpo = '';
+        // Extraer el cuerpo del correo
+        let cuerpoHTML = '';
+        let cuerpoTexto = '';
+        let attachments = [];
+
         const parts = messageData.data.payload?.parts || [];
         
-        for (const part of parts) {
-            if (part.mimeType === 'text/plain' || part.mimeType === 'text/html') {
-                if (part.body?.data) {
-                    const data = Buffer.from(part.body.data, 'base64').toString('utf-8');
-                    cuerpo += data;
-                }
+        // Función recursiva para extraer contenido de partes anidadas
+        function procesarParte(parte) {
+            if (parte.mimeType === 'text/html' && parte.body?.data) {
+                cuerpoHTML = Buffer.from(parte.body.data, 'base64').toString('utf-8');
+            }
+            if (parte.mimeType === 'text/plain' && parte.body?.data) {
+                cuerpoTexto = Buffer.from(parte.body.data, 'base64').toString('utf-8');
+            }
+            if (parte.parts) {
+                parte.parts.forEach(p => procesarParte(p));
             }
         }
 
-        if (!cuerpo) {
-            cuerpo = messageData.data.snippet || '';
+        // Procesar todas las partes
+        if (parts.length > 0) {
+            parts.forEach(part => procesarParte(part));
+        } else if (messageData.data.payload?.body?.data) {
+            // Si no hay partes, usar el cuerpo directamente
+            const data = messageData.data.payload.body.data;
+            if (messageData.data.payload.mimeType === 'text/html') {
+                cuerpoHTML = Buffer.from(data, 'base64').toString('utf-8');
+            } else {
+                cuerpoTexto = Buffer.from(data, 'base64').toString('utf-8');
+            }
         }
 
-        // Buscar token con regex
+        // Si no hay HTML, usar texto plano
+        if (!cuerpoHTML && cuerpoTexto) {
+            cuerpoHTML = cuerpoTexto.replace(/\n/g, '<br>');
+        }
+
+        // Extraer el token (si existe) para guardarlo
         const tokenRegex = /NF-[A-Z0-9]{4}-[A-Z0-9]{4}/i;
-        const match = cuerpo.match(tokenRegex);
+        const match = cuerpoHTML.match(tokenRegex) || cuerpoTexto.match(tokenRegex);
+        const token = match ? match[0].toUpperCase() : null;
 
-        if (match) {
-            const token = match[0].toUpperCase();
-            console.log(`✅ Token encontrado: ${token}`);
-            
-            await db.setUltimoToken(token);
-            
-            return {
-                token: token,
-                messageId: lastMessage.id,
-                date: new Date(parseInt(lastMessage.internalDate)),
-                subject: messageData.data.payload?.headers?.find(h => h.name === 'Subject')?.value || 'Sin asunto',
-                from: messageData.data.payload?.headers?.find(h => h.name === 'From')?.value || '',
-                snippet: messageData.data.snippet || ''
-            };
-        }
+        // Obtener asunto y remitente
+        const headers = messageData.data.payload?.headers || [];
+        const subject = headers.find(h => h.name === 'Subject')?.value || 'Sin asunto';
+        const from = headers.find(h => h.name === 'From')?.value || 'Netflix';
 
-        console.log('⚠️ No se encontró token en el correo');
-        return null;
+        console.log(`✅ Correo leído: ${subject}`);
+        if (token) console.log(`🔑 Token encontrado: ${token}`);
+
+        return {
+            id: messageId,
+            subject: subject,
+            from: from,
+            cuerpoHTML: cuerpoHTML,
+            cuerpoTexto: cuerpoTexto,
+            token: token,
+            date: new Date(parseInt(messageData.data.internalDate)),
+            snippet: messageData.data.snippet || ''
+        };
+
     } catch (error) {
-        console.error('❌ Error al leer correos:', error);
+        console.error('❌ Error al leer correo:', error);
         return null;
     }
 }
 
+// ============================================
+// REENVIAR CORREO ORIGINAL
+// ============================================
+
+async function reenviarCorreoOriginal(destinatario, correoOriginal) {
+    try {
+        console.log(`📧 Reenviando correo original a ${destinatario}...`);
+        
+        const auth = initOAuth2();
+        const gmail = google.gmail({ version: 'v1', auth });
+
+        // Obtener el mensaje original completo
+        const messageData = await gmail.users.messages.get({
+            userId: 'me',
+            id: correoOriginal.id,
+            format: 'raw'
+        });
+
+        // Extraer el RAW del mensaje original
+        const raw = messageData.data.raw;
+        
+        // Decodificar el raw para modificarlo (cambiar el "To")
+        const decodedRaw = Buffer.from(raw, 'base64').toString('utf-8');
+        
+        // Reemplazar el "To" original con el destinatario
+        // Mantenemos el resto del correo intacto (asunto, cuerpo, etc.)
+        const lines = decodedRaw.split('\n');
+        let nuevoRaw = '';
+        let toReemplazado = false;
+        
+        for (const line of lines) {
+            if (line.startsWith('To:') && !toReemplazado) {
+                nuevoRaw += `To: ${destinatario}\n`;
+                toReemplazado = true;
+            } else if (line.startsWith('To:') && toReemplazado) {
+                // Saltar líneas To adicionales
+                continue;
+            } else {
+                nuevoRaw += line + '\n';
+            }
+        }
+
+        // Si no se reemplazó el To, agregarlo
+        if (!toReemplazado) {
+            nuevoRaw = `To: ${destinatario}\n${nuevoRaw}`;
+        }
+
+        // Codificar de nuevo a base64
+        const newRawBase64 = Buffer.from(nuevoRaw, 'utf-8').toString('base64');
+
+        // Enviar el correo modificado
+        const result = await gmail.users.messages.send({
+            userId: 'me',
+            requestBody: {
+                raw: newRawBase64
+            }
+        });
+
+        console.log(`✅ Correo reenviado a ${destinatario} (ID: ${result.data.id})`);
+        
+        return {
+            success: true,
+            messageId: result.data.id,
+            destinatario: destinatario
+        };
+
+    } catch (error) {
+        console.error(`❌ Error al reenviar a ${destinatario}:`, error.message);
+        return {
+            success: false,
+            error: error.message,
+            destinatario: destinatario
+        };
+    }
+}
+
+// ============================================
+// FUNCIONES EXISTENTES (para compatibilidad)
+// ============================================
+
 async function hayTokenNuevo() {
     try {
-        console.log('🔍 Verificando si hay token nuevo...');
-        const tokenData = await leerTokensDeGmail();
-        if (!tokenData) return null;
+        const correo = await leerCorreoCompleto();
+        if (!correo) return null;
 
         const ultimoToken = await db.getUltimoToken();
-        if (ultimoToken && ultimoToken === tokenData.token) {
+        if (ultimoToken && ultimoToken === correo.token) {
             console.log('ℹ️ Token ya fue procesado anteriormente');
             return null;
         }
 
-        console.log('✅ Token nuevo detectado:', tokenData.token);
-        return tokenData;
+        return correo;
     } catch (error) {
         console.error('❌ Error al verificar token nuevo:', error);
         return null;
@@ -122,6 +224,7 @@ async function hayTokenNuevo() {
 
 module.exports = {
     initOAuth2,
-    leerTokensDeGmail,
+    leerCorreoCompleto,
+    reenviarCorreoOriginal,
     hayTokenNuevo
 };
