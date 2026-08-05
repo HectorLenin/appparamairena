@@ -1,329 +1,282 @@
-const { google } = require('googleapis');
+const express = require('express');
+const cors = require('cors');
+const dotenv = require('dotenv');
+const cron = require('node-cron');
 const db = require('./database');
+const gmail = require('./gmail');
+const emailService = require('./emailService');
 
-// ============================================
-// GENERAR URL DE AUTORIZACIÓN PARA UN CLIENTE
-// ============================================
+dotenv.config();
 
-function getAuthUrl(email) {
-    const oAuth2Client = new google.auth.OAuth2(
-        process.env.GOOGLE_CLIENT_ID,
-        process.env.GOOGLE_CLIENT_SECRET,
-        'https://appparamairena-1.onrender.com/api/auth/callback'
-    );
+const app = express();
+const PORT = process.env.PORT || 10000;
 
-    const state = Buffer.from(JSON.stringify({ email })).toString('base64');
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
 
-    const authUrl = oAuth2Client.generateAuthUrl({
-        access_type: 'offline',
-        scope: [
-            'https://www.googleapis.com/auth/gmail.readonly',
-            'https://www.googleapis.com/auth/gmail.send'
-        ],
-        prompt: 'consent',
-        state: state
+app.get('/', (req, res) => {
+    res.json({
+        status: 'OK',
+        name: 'Reenvío Netflix Backend',
+        version: '2.0.0',
+        admin_email: process.env.ADMIN_EMAIL,
+        cycle_days: process.env.CYCLE_DAYS || 20
     });
+});
 
-    return authUrl;
+// ============================================
+// PROCESO PRINCIPAL
+// ============================================
+let procesoEnEjecucion = false;
+
+async function procesarYReenviar(emailsSeleccionados = null) {
+    if (procesoEnEjecucion) {
+        return { success: false, message: 'Proceso en ejecución' };
+    }
+
+    try {
+        procesoEnEjecucion = true;
+        console.log('🔄 Iniciando proceso de reenvío...');
+
+        const correoOriginal = await gmail.hayTokenNuevo();
+        if (!correoOriginal) {
+            procesoEnEjecucion = false;
+            return { success: false, message: 'No hay correo nuevo de Netflix' };
+        }
+
+        console.log(`📧 Correo encontrado: ${correoOriginal.subject}`);
+
+        await db.setUltimoCorreo(correoOriginal);
+
+        let destinatarios = await db.getDestinatarios();
+        
+        if (emailsSeleccionados && emailsSeleccionados.length > 0) {
+            destinatarios = destinatarios.filter(d => 
+                emailsSeleccionados.includes(d.email)
+            );
+        }
+
+        const emails = destinatarios.map(d => d.email);
+
+        if (emails.length === 0) {
+            procesoEnEjecucion = false;
+            return { success: false, message: 'Sin destinatarios' };
+        }
+
+        console.log(`📨 Reenviando correo original a ${emails.length} destinatarios...`);
+
+        const resultados = await emailService.reenviarTokenMultiple(
+            emails,
+            correoOriginal
+        );
+
+        const exitosos = resultados.filter(r => r.success);
+        if (exitosos.length > 0) {
+            await db.saveTokenEnviado(
+                correoOriginal.token || 'SIN_TOKEN',
+                exitosos.length,
+                exitosos[0].messageId || ''
+            );
+            await db.setUltimoEnvio(new Date().toISOString());
+        }
+
+        procesoEnEjecucion = false;
+        
+        return {
+            success: true,
+            message: `Correo reenviado a ${exitosos.length} destinatarios`,
+            token: correoOriginal.token || 'No se encontró token',
+            exitosos: exitosos.length,
+            fallidos: resultados.length - exitosos.length
+        };
+
+    } catch (error) {
+        console.error('❌ Error:', error);
+        procesoEnEjecucion = false;
+        return { success: false, error: error.message };
+    }
 }
 
 // ============================================
-// INTERCAMBIAR CÓDIGO POR REFRESH TOKEN
+// CRON Y DESTINATARIOS POR DEFECTO
 // ============================================
+cron.schedule('0 9 */20 * *', async () => {
+    console.log('⏰ Ejecutando tarea programada...');
+    await procesarYReenviar();
+});
 
-async function exchangeCodeForToken(email, code) {
-    try {
-        console.log(`🔄 Intercambiando código por token para ${email}...`);
-        
-        const oAuth2Client = new google.auth.OAuth2(
-            process.env.GOOGLE_CLIENT_ID,
-            process.env.GOOGLE_CLIENT_SECRET,
-            'https://appparamairena-1.onrender.com/api/auth/callback'
-        );
-
-        const { tokens } = await oAuth2Client.getToken(code);
-        console.log('✅ Tokens recibidos:', tokens ? 'Sí' : 'No');
-        
-        if (tokens.refresh_token) {
-            await db.setRefreshToken(email, tokens.refresh_token);
-            console.log(`✅ Refresh token guardado para ${email}`);
+setTimeout(async () => {
+    console.log('📋 Agregando destinatarios por defecto...');
+    const destinatariosPorDefecto = [
+        'pollochucohn1@gmail.com',
+        '1305sofiathelma@gmail.com',
+        'unacuentamas1305@gmail.com',
+        'Unacuentamas1007.hn@gmail.com',
+        '1305cuentasvideo@gmail.com',
+        'Lafamiliaprimero.1305@gmail.com',
+        'Cuentasmairena.123@gmail.com',
+        'Osohonduras2026@gmail.com'
+    ];
+    for (const email of destinatariosPorDefecto) {
+        const agregado = await db.addDestinatario(email);
+        if (agregado) {
+            console.log(`✅ Destinatario agregado: ${email}`);
         } else {
-            console.log(`⚠️ No se recibió refresh_token para ${email}`);
+            console.log(`ℹ️ El destinatario ya existe: ${email}`);
         }
-
-        return tokens;
-    } catch (error) {
-        console.error(`❌ Error al intercambiar código para ${email}:`, error);
-        throw error;
     }
-}
+    console.log('🚀 Forzando reenvío después de agregar destinatarios...');
+    const resultado = await procesarYReenviar();
+    console.log('📊 Resultado del reenvío:', resultado);
+}, 8000);
 
 // ============================================
-// LEER CORREO DE NETFLIX (GLOBAL - ADMIN)
+// ENDPOINTS (SOLO LOS ESENCIALES PARA PROBAR)
 // ============================================
-
-async function leerCorreoCompleto() {
+app.get('/api/estado', async (req, res) => {
     try {
-        console.log('📨 Buscando correo de Netflix (admin)...');
-        
-        const auth = new google.auth.OAuth2(
-            process.env.GOOGLE_CLIENT_ID,
-            process.env.GOOGLE_CLIENT_SECRET,
-            'https://developers.google.com/oauthplayground'
-        );
-        
-        auth.setCredentials({
-            refresh_token: process.env.GOOGLE_REFRESH_TOKEN
-        });
-
-        const gmail = google.gmail({ version: 'v1', auth });
-
-        // 🔥 BUSCAR EN LOS ÚLTIMOS 7 DÍAS
-        const fechaLimite = Math.floor(Date.now() / 1000 - 7 * 24 * 60 * 60);
-        const query = `from:netflix.com after:${fechaLimite}`;
-        
-        const response = await gmail.users.messages.list({
-            userId: 'me',
-            q: query,
-            maxResults: 1
-        });
-
-        const messages = response.data.messages || [];
-        
-        if (messages.length === 0) {
-            console.log('ℹ️ No se encontraron correos de Netflix');
-            return null;
-        }
-
-        const messageId = messages[0].id;
-        const messageData = await gmail.users.messages.get({
-            userId: 'me',
-            id: messageId,
-            format: 'full'
-        });
-
-        let cuerpoHTML = '';
-        let cuerpoTexto = '';
-
-        const parts = messageData.data.payload?.parts || [];
-        
-        function procesarParte(parte) {
-            if (parte.mimeType === 'text/html' && parte.body?.data) {
-                cuerpoHTML = Buffer.from(parte.body.data, 'base64').toString('utf-8');
-            }
-            if (parte.mimeType === 'text/plain' && parte.body?.data) {
-                cuerpoTexto = Buffer.from(parte.body.data, 'base64').toString('utf-8');
-            }
-            if (parte.parts) {
-                parte.parts.forEach(p => procesarParte(p));
-            }
-        }
-
-        if (parts.length > 0) {
-            parts.forEach(part => procesarParte(part));
-        } else if (messageData.data.payload?.body?.data) {
-            const data = messageData.data.payload.body.data;
-            if (messageData.data.payload.mimeType === 'text/html') {
-                cuerpoHTML = Buffer.from(data, 'base64').toString('utf-8');
-            } else {
-                cuerpoTexto = Buffer.from(data, 'base64').toString('utf-8');
-            }
-        }
-
-        if (!cuerpoHTML && cuerpoTexto) {
-            cuerpoHTML = cuerpoTexto.replace(/\n/g, '<br>');
-        }
-
-        const tokenRegex = /NF-[A-Z0-9]{4}-[A-Z0-9]{4}/i;
-        const match = cuerpoHTML.match(tokenRegex) || cuerpoTexto.match(tokenRegex);
-        const token = match ? match[0].toUpperCase() : null;
-
-        const headers = messageData.data.payload?.headers || [];
-        const subject = headers.find(h => h.name === 'Subject')?.value || 'Sin asunto';
-        const from = headers.find(h => h.name === 'From')?.value || 'Netflix';
-
-        const correo = {
-            id: messageId,
-            subject: subject,
-            from: from,
-            cuerpoHTML: cuerpoHTML,
-            cuerpoTexto: cuerpoTexto,
-            token: token,
-            date: new Date(parseInt(messageData.data.internalDate)),
-            snippet: messageData.data.snippet || ''
-        };
-
-        console.log(`✅ Correo leído: ${subject}`);
-        if (token) console.log(`🔑 Token encontrado: ${token}`);
-
-        return correo;
-
-    } catch (error) {
-        console.error('❌ Error al leer correo:', error);
-        return null;
-    }
-}
-
-// ============================================
-// LEER CORREO PARA UN CLIENTE ESPECÍFICO (EN TIEMPO REAL)
-// ============================================
-
-async function leerCorreoParaCliente(email) {
-    try {
-        console.log(`📨 Buscando correo de Netflix para ${email}...`);
-        
-        // Obtener refresh token del cliente
-        let refreshToken = await db.getRefreshToken(email);
-        
-        // Si es el admin y no tiene token, usar el token global del admin
-        if (!refreshToken && email === process.env.ADMIN_EMAIL) {
-            console.log(`🔑 Usando token global del admin para ${email}`);
-            refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
-        }
-
-        if (!refreshToken) {
-            console.log(`⚠️ No hay refresh token para ${email}. El cliente debe autorizar la app.`);
-            return null;
-        }
-
-        // Usar ESE token para leer su correo
-        const auth = new google.auth.OAuth2(
-            process.env.GOOGLE_CLIENT_ID,
-            process.env.GOOGLE_CLIENT_SECRET,
-            'https://developers.google.com/oauthplayground'
-        );
-        
-        auth.setCredentials({
-            refresh_token: refreshToken
-        });
-
-        const gmail = google.gmail({ version: 'v1', auth });
-
-        // 🔥 BUSCAR EN LOS ÚLTIMOS 7 DÍAS
-        const fechaLimite = Math.floor(Date.now() / 1000 - 7 * 24 * 60 * 60);
-        const query = `from:netflix.com after:${fechaLimite}`;
-        
-        console.log(`🔍 Query para ${email}: ${query}`);
-        
-        const response = await gmail.users.messages.list({
-            userId: 'me',
-            q: query,
-            maxResults: 5
-        });
-
-        const messages = response.data.messages || [];
-        
-        if (messages.length === 0) {
-            console.log(`ℹ️ No se encontraron correos de Netflix para ${email}`);
-            return null;
-        }
-
-        const messageId = messages[0].id;
-        console.log(`📧 Mensaje encontrado para ${email}: ${messageId}`);
-        
-        const messageData = await gmail.users.messages.get({
-            userId: 'me',
-            id: messageId,
-            format: 'full'
-        });
-
-        let cuerpoHTML = '';
-        let cuerpoTexto = '';
-
-        const parts = messageData.data.payload?.parts || [];
-        
-        function procesarParte(parte) {
-            if (parte.mimeType === 'text/html' && parte.body?.data) {
-                cuerpoHTML = Buffer.from(parte.body.data, 'base64').toString('utf-8');
-            }
-            if (parte.mimeType === 'text/plain' && parte.body?.data) {
-                cuerpoTexto = Buffer.from(parte.body.data, 'base64').toString('utf-8');
-            }
-            if (parte.parts) {
-                parte.parts.forEach(p => procesarParte(p));
-            }
-        }
-
-        if (parts.length > 0) {
-            parts.forEach(part => procesarParte(part));
-        } else if (messageData.data.payload?.body?.data) {
-            const data = messageData.data.payload.body.data;
-            if (messageData.data.payload.mimeType === 'text/html') {
-                cuerpoHTML = Buffer.from(data, 'base64').toString('utf-8');
-            } else {
-                cuerpoTexto = Buffer.from(data, 'base64').toString('utf-8');
-            }
-        }
-
-        if (!cuerpoHTML && cuerpoTexto) {
-            cuerpoHTML = cuerpoTexto.replace(/\n/g, '<br>');
-        }
-
-        const tokenRegex = /NF-[A-Z0-9]{4}-[A-Z0-9]{4}/i;
-        const match = cuerpoHTML.match(tokenRegex) || cuerpoTexto.match(tokenRegex);
-        const token = match ? match[0].toUpperCase() : null;
-
-        const headers = messageData.data.payload?.headers || [];
-        const subject = headers.find(h => h.name === 'Subject')?.value || 'Sin asunto';
-        const from = headers.find(h => h.name === 'From')?.value || 'Netflix';
-
-        const correo = {
-            id: messageId,
-            subject: subject,
-            from: from,
-            cuerpoHTML: cuerpoHTML,
-            cuerpoTexto: cuerpoTexto,
-            token: token,
-            date: new Date(parseInt(messageData.data.internalDate)),
-            snippet: messageData.data.snippet || ''
-        };
-
-        // Guardar en la base de datos (actualizar siempre)
-        await db.setUltimoCorreoParaCliente(email, correo);
-        if (token) {
-            await db.setUltimoToken(token);
-        }
-
-        console.log(`✅ Correo leído para ${email}: ${subject}`);
-        return correo;
-
-    } catch (error) {
-        console.error(`❌ Error al leer correo para ${email}:`, error);
-        return null;
-    }
-}
-
-// ============================================
-// VERIFICAR SI HAY TOKEN NUEVO (para el cron)
-// ============================================
-
-async function hayTokenNuevo() {
-    try {
-        console.log('🔍 Verificando si hay token nuevo...');
-        const correo = await leerCorreoCompleto();
-        if (!correo) return null;
-
+        const stats = await db.getEstadisticas();
         const ultimoToken = await db.getUltimoToken();
-        if (ultimoToken && ultimoToken === correo.token) {
-            console.log('ℹ️ Token ya fue procesado anteriormente');
-            return null;
-        }
-
-        return correo;
+        const ultimoEnvio = await db.getUltimoEnvio();
+        const destinatarios = await db.getDestinatarios();
+        res.json({
+            success: true,
+            estado: {
+                ultimo_token: ultimoToken || '—',
+                ultimo_envio: ultimoEnvio || '—',
+                total_destinatarios: stats.total_destinatarios || 0,
+                total_envios: stats.total_envios || 0,
+                ultimo_token_enviado: stats.ultimo_token_enviado || '—',
+                ultima_fecha_envio: stats.ultima_fecha_envio || '—',
+                ciclo_dias: parseInt(process.env.CYCLE_DAYS || 20),
+                admin_email: process.env.ADMIN_EMAIL || 'configurado'
+            }
+        });
     } catch (error) {
-        console.error('❌ Error al verificar token nuevo:', error);
-        return null;
+        res.status(500).json({ success: false, error: error.message });
     }
-}
+});
+
+app.get('/api/destinatarios', async (req, res) => {
+    try {
+        const destinatarios = await db.getDestinatarios();
+        res.json({
+            success: true,
+            destinatarios: destinatarios.map(d => d.email),
+            total: destinatarios.length
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/destinatarios', async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email || !email.includes('@')) {
+            return res.status(400).json({ success: false, error: 'Correo inválido' });
+        }
+        const agregado = await db.addDestinatario(email);
+        if (agregado) {
+            res.json({ success: true, message: 'Correo agregado' });
+        } else {
+            res.status(400).json({ success: false, error: 'El correo ya existe' });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.delete('/api/destinatarios/:email', async (req, res) => {
+    try {
+        const email = decodeURIComponent(req.params.email);
+        const eliminado = await db.removeDestinatario(email);
+        if (eliminado) {
+            res.json({ success: true, message: 'Correo eliminado' });
+        } else {
+            res.status(404).json({ success: false, error: 'Correo no encontrado' });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/reenviar', async (req, res) => {
+    try {
+        const { emails } = req.body;
+        if (!emails || emails.length === 0) {
+            return res.status(400).json({ success: false, error: 'Selecciona al menos un destinatario' });
+        }
+        const resultado = await procesarYReenviar(emails);
+        res.json({
+            success: resultado.success,
+            message: resultado.message || 'Reenvío completado',
+            token: resultado.token || null,
+            exitosos: resultado.exitosos || 0,
+            fallidos: resultado.fallidos || 0
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/token/manual', async (req, res) => {
+    try {
+        const { token } = req.body;
+        if (!token || token.length < 5) {
+            return res.status(400).json({ success: false, error: 'Token inválido' });
+        }
+        await db.setUltimoToken(token);
+        await db.setUltimoEnvio(new Date().toISOString());
+        res.json({ success: true, message: 'Token guardado manualmente', token });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/correo/cliente', async (req, res) => {
+    try {
+        const { email } = req.query;
+        if (!email) {
+            return res.status(400).json({ success: false, error: 'Email requerido' });
+        }
+        const correo = await gmail.leerCorreoParaCliente(email);
+        res.json({ success: true, correo: correo || null });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/correo/actualizar', async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) {
+            return res.status(400).json({ success: false, error: 'Email requerido' });
+        }
+        console.log(`🔄 Actualizando correo en tiempo real para ${email}...`);
+        const correo = await gmail.leerCorreoParaCliente(email);
+        if (correo) {
+            await db.setUltimoCorreoParaCliente(email, correo);
+            res.json({ success: true, message: 'Correo actualizado', correo });
+        } else {
+            res.json({ success: false, message: 'No se encontraron correos nuevos', correo: null });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 
 // ============================================
-// EXPORTAR
+// INICIAR SERVIDOR
 // ============================================
+app.listen(PORT, () => {
+    console.log('========================================');
+    console.log('✅ REENVÍO NETFLIX - CORREO ORIGINAL');
+    console.log('========================================');
+    console.log(`📡 Puerto: ${PORT}`);
+    console.log(`📧 Admin: ${process.env.ADMIN_EMAIL || 'No configurado'}`);
+    console.log(`🔄 Ciclo: cada ${process.env.CYCLE_DAYS || 20} días`);
+    console.log('========================================');
+});
 
-module.exports = {
-    getAuthUrl,
-    exchangeCodeForToken,
-    leerCorreoCompleto,
-    leerCorreoParaCliente,
-    hayTokenNuevo
-};
+module.exports = app;
