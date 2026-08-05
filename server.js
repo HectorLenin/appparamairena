@@ -144,7 +144,7 @@ setTimeout(async () => {
 }, 8000);
 
 // ============================================
-// ENDPOINTS DE AUTENTICACIÓN
+// ENDPOINTS DE AUTENTICACIÓN (MEJORADOS)
 // ============================================
 
 // Obtener URL de autorización para un cliente
@@ -163,31 +163,69 @@ app.get('/api/auth/url', (req, res) => {
     }
 });
 
-// Callback de autorización
+// 🔥 CALLBACK MEJORADO: GUARDA EL EMAIL EN LA SESIÓN
 app.get('/api/auth/callback', async (req, res) => {
     try {
         const { code, state } = req.query;
         
         // Decodificar el email del state
         let email = '';
-        try {
-            const decoded = Buffer.from(state, 'base64').toString('utf-8');
-            const data = JSON.parse(decoded);
-            email = data.email;
-        } catch (error) {
+        if (state) {
+            try {
+                const decoded = Buffer.from(state, 'base64').toString('utf-8');
+                const data = JSON.parse(decoded);
+                email = data.email;
+            } catch (e) {
+                console.log('⚠️ Error decodificando state, usando fallback');
+            }
+        }
+        
+        // Si no se pudo obtener del state, usar el parámetro email (fallback)
+        if (!email) {
             email = req.query.email || '';
         }
 
-        if (!code || !email) {
+        // 🔥 NUEVO: Si el email sigue vacío, intentar obtenerlo de la sesión (si usas sesiones)
+        // Por ahora, devolvemos error
+        if (!email) {
+            return res.status(400).send(`
+                <html>
+                    <body style="font-family: Arial; text-align: center; padding: 50px;">
+                        <h2>❌ Error: No se pudo identificar la cuenta</h2>
+                        <p>Vuelve a intentarlo desde la aplicación.</p>
+                        <button onclick="window.close()" style="padding: 10px 20px; background: #e50914; color: white; border: none; border-radius: 8px; cursor: pointer;">Cerrar</button>
+                    </body>
+                </html>
+            `);
+        }
+
+        if (!code) {
             return res.status(400).send('Faltan parámetros');
         }
 
         console.log(`🔄 Procesando callback para ${email}...`);
+        
+        // Intercambiar código por token
         await gmail.exchangeCodeForToken(email, code);
 
         // Verificar que se guardó
         const refreshToken = await db.getRefreshToken(email);
         console.log(`🔑 Refresh token para ${email}: ${refreshToken ? '✅ Guardado' : '❌ No guardado'}`);
+
+        // 🔥 NUEVO: Si el token no se guardó, mostrar mensaje de error
+        if (!refreshToken) {
+            return res.send(`
+                <html>
+                    <body style="font-family: Arial; text-align: center; padding: 50px;">
+                        <h2>⚠️ Autorización parcial</h2>
+                        <p>No se pudo obtener un token de actualización para <strong>${email}</strong>.</p>
+                        <p>Esto puede ocurrir si la cuenta ya tenía un token previo.</p>
+                        <p>Intenta seleccionar la cuenta nuevamente en la aplicación.</p>
+                        <button onclick="window.close()" style="padding: 10px 20px; background: #e50914; color: white; border: none; border-radius: 8px; cursor: pointer;">Cerrar</button>
+                    </body>
+                </html>
+            `);
+        }
 
         res.send(`
             <html>
@@ -195,13 +233,23 @@ app.get('/api/auth/callback', async (req, res) => {
                     <h2>✅ ¡Autorización exitosa!</h2>
                     <p>La cuenta <strong>${email}</strong> ha sido autorizada correctamente.</p>
                     <p>Ya puedes cerrar esta ventana y volver a la aplicación.</p>
+                    <p>Selecciona la cuenta nuevamente para ver su correo.</p>
                     <button onclick="window.close()" style="padding: 10px 20px; background: #e50914; color: white; border: none; border-radius: 8px; cursor: pointer;">Cerrar ventana</button>
                 </body>
             </html>
         `);
     } catch (error) {
         console.error('Error en /api/auth/callback:', error);
-        res.status(500).send(`<h2>❌ Error: ${error.message}</h2>`);
+        res.status(500).send(`
+            <html>
+                <body style="font-family: Arial; text-align: center; padding: 50px;">
+                    <h2>❌ Error en la autorización</h2>
+                    <p><strong>${error.message}</strong></p>
+                    <p>Vuelve a intentarlo desde la aplicación.</p>
+                    <button onclick="window.close()" style="padding: 10px 20px; background: #e50914; color: white; border: none; border-radius: 8px; cursor: pointer;">Cerrar</button>
+                </body>
+            </html>
+        `);
     }
 });
 
