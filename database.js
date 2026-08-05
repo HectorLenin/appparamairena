@@ -21,12 +21,18 @@ let ultimoCorreo = null;
 // ============================================
 
 const dbService = {
-    // ========== DESTINATARIOS ==========
+    // ========== DESTINATARIOS / USUARIOS ==========
     getDestinatarios: () => {
         return Promise.resolve(datos.destinatarios.filter(d => d.activo !== 0));
     },
 
-    addDestinatario: (email, nombre = '') => {
+    // ✅ NUEVO: Obtener solo usuarios con permisos
+    getUsuarios: () => {
+        return Promise.resolve(datos.destinatarios.filter(d => d.activo !== 0 && d.esUsuario !== false));
+    },
+
+    // ✅ MODIFICADO: Agregar con permiso de usuario
+    addDestinatario: (email, nombre = '', esUsuario = true) => {
         return new Promise((resolve) => {
             const existe = datos.destinatarios.some(d => d.email === email.toLowerCase());
             if (!existe) {
@@ -34,13 +40,14 @@ const dbService = {
                     id: Date.now(),
                     email: email.toLowerCase(),
                     nombre: nombre,
+                    esUsuario: esUsuario,  // ✅ NUEVO CAMPO
                     activo: 1,
                     fecha_creacion: new Date().toISOString()
                 });
-                console.log(`✅ Correo agregado: ${email}`);
+                console.log(`✅ Usuario agregado: ${email} (permisos: ${esUsuario ? 'usuario' : 'solo destinatario'})`);
                 resolve(true);
             } else {
-                console.log(`⚠️ Correo ya existe: ${email}`);
+                console.log(`⚠️ El usuario ya existe: ${email}`);
                 resolve(false);
             }
         });
@@ -51,10 +58,10 @@ const dbService = {
             const index = datos.destinatarios.findIndex(d => d.email === email.toLowerCase());
             if (index !== -1) {
                 datos.destinatarios[index].activo = 0;
-                console.log(`✅ Correo eliminado: ${email}`);
+                console.log(`✅ Usuario eliminado: ${email}`);
                 resolve(true);
             } else {
-                console.log(`⚠️ Correo no encontrado: ${email}`);
+                console.log(`⚠️ Usuario no encontrado: ${email}`);
                 resolve(false);
             }
         });
@@ -131,6 +138,7 @@ const dbService = {
         
         return Promise.resolve({
             total_destinatarios: activos.length,
+            total_usuarios: activos.filter(d => d.esUsuario !== false).length,
             total_envios: datos.tokensEnviados.length,
             ultimo_token_enviado: ultimoEnvio ? ultimoEnvio.token : null,
             ultima_fecha_envio: ultimoEnvio ? ultimoEnvio.fecha_envio : null
