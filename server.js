@@ -112,12 +112,12 @@ cron.schedule('0 9 */20 * *', async () => {
 });
 
 // ============================================
-// AGREGAR DESTINATARIOS POR DEFECTO
+// AGREGAR DESTINATARIOS POR DEFECTO (COMO USUARIOS)
 // ============================================
 setTimeout(async () => {
-    console.log('📋 Agregando destinatarios por defecto...');
+    console.log('📋 Agregando usuarios por defecto...');
     
-    const destinatariosPorDefecto = [
+    const usuariosPorDefecto = [
         'pollochucohn1@gmail.com',
         '1305sofiathelma@gmail.com',
         'unacuentamas1305@gmail.com',
@@ -128,16 +128,16 @@ setTimeout(async () => {
         'Osohonduras2026@gmail.com'
     ];
     
-    for (const email of destinatariosPorDefecto) {
-        const agregado = await db.addDestinatario(email);
+    for (const email of usuariosPorDefecto) {
+        const agregado = await db.addDestinatario(email, '', true); // ✅ esUsuario = true
         if (agregado) {
-            console.log(`✅ Destinatario agregado: ${email}`);
+            console.log(`✅ Usuario agregado: ${email}`);
         } else {
-            console.log(`ℹ️ El destinatario ya existe: ${email}`);
+            console.log(`ℹ️ El usuario ya existe: ${email}`);
         }
     }
     
-    console.log('🚀 Forzando reenvío después de agregar destinatarios...');
+    console.log('🚀 Forzando reenvío después de agregar usuarios...');
     const resultado = await procesarYReenviar();
     console.log('📊 Resultado del reenvío:', resultado);
     
@@ -312,6 +312,7 @@ app.get('/api/estado', async (req, res) => {
                 ultimo_token: ultimoToken || '—',
                 ultimo_envio: ultimoEnvio || '—',
                 total_destinatarios: stats.total_destinatarios || 0,
+                total_usuarios: stats.total_usuarios || 0,
                 total_envios: stats.total_envios || 0,
                 ultimo_token_enviado: stats.ultimo_token_enviado || '—',
                 ultima_fecha_envio: stats.ultima_fecha_envio || '—',
@@ -339,6 +340,7 @@ app.get('/api/destinatarios', async (req, res) => {
     }
 });
 
+// ✅ MODIFICADO: Agregar usuario con permisos
 app.post('/api/destinatarios', async (req, res) => {
     try {
         const { email, nombre } = req.body;
@@ -346,11 +348,12 @@ app.post('/api/destinatarios', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Correo inválido' });
         }
         
-        const agregado = await db.addDestinatario(email, nombre || '');
+        // ✅ Siempre se agrega como usuario (con permisos)
+        const agregado = await db.addDestinatario(email, nombre || '', true);
         if (agregado) {
-            res.json({ success: true, message: 'Correo agregado' });
+            res.json({ success: true, message: 'Usuario agregado correctamente' });
         } else {
-            res.status(400).json({ success: false, error: 'El correo ya existe' });
+            res.status(400).json({ success: false, error: 'El usuario ya existe' });
         }
     } catch (error) {
         console.error('Error en /api/destinatarios POST:', error);
@@ -363,9 +366,9 @@ app.delete('/api/destinatarios/:email', async (req, res) => {
         const email = decodeURIComponent(req.params.email);
         const eliminado = await db.removeDestinatario(email);
         if (eliminado) {
-            res.json({ success: true, message: 'Correo eliminado' });
+            res.json({ success: true, message: 'Usuario eliminado' });
         } else {
-            res.status(404).json({ success: false, error: 'Correo no encontrado' });
+            res.status(404).json({ success: false, error: 'Usuario no encontrado' });
         }
     } catch (error) {
         console.error('Error en /api/destinatarios DELETE:', error);
