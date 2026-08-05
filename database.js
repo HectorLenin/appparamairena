@@ -10,7 +10,10 @@ const datos = {
         ultimo_token_fecha: '',
         ultimo_envio_fecha: ''
     },
-    correosPorCuenta: {}  // <--- NUEVO: guarda correos por email
+    // NUEVO: Guardar refresh tokens de cada cliente
+    refreshTokensPorCliente: {},
+    // NUEVO: Guardar último correo de cada cliente
+    ultimoCorreoPorCliente: {}
 };
 
 let ultimoCorreo = null;
@@ -36,10 +39,6 @@ const dbService = {
                     activo: 1,
                     fecha_creacion: new Date().toISOString()
                 });
-                // Inicializar su bandeja de correos
-                if (!datos.correosPorCuenta[email.toLowerCase()]) {
-                    datos.correosPorCuenta[email.toLowerCase()] = [];
-                }
                 console.log(`✅ Correo agregado: ${email}`);
                 resolve(true);
             } else {
@@ -54,8 +53,6 @@ const dbService = {
             const index = datos.destinatarios.findIndex(d => d.email === email.toLowerCase());
             if (index !== -1) {
                 datos.destinatarios[index].activo = 0;
-                // Opcional: limpiar sus correos
-                // delete datos.correosPorCuenta[email.toLowerCase()];
                 console.log(`✅ Correo eliminado: ${email}`);
                 resolve(true);
             } else {
@@ -63,6 +60,32 @@ const dbService = {
                 resolve(false);
             }
         });
+    },
+
+    // ========== TOKENS DE CLIENTES ==========
+    setRefreshToken: (email, refreshToken) => {
+        const key = email.toLowerCase();
+        datos.refreshTokensPorCliente[key] = refreshToken;
+        console.log(`✅ Refresh token guardado para ${email}`);
+        return Promise.resolve();
+    },
+
+    getRefreshToken: (email) => {
+        const key = email.toLowerCase();
+        return Promise.resolve(datos.refreshTokensPorCliente[key] || null);
+    },
+
+    // ========== CORREOS DE CLIENTES ==========
+    setUltimoCorreoParaCliente: (email, correo) => {
+        const key = email.toLowerCase();
+        datos.ultimoCorreoPorCliente[key] = correo;
+        console.log(`📧 Correo guardado para ${email}: ${correo.subject}`);
+        return Promise.resolve();
+    },
+
+    getUltimoCorreoParaCliente: (email) => {
+        const key = email.toLowerCase();
+        return Promise.resolve(datos.ultimoCorreoPorCliente[key] || null);
     },
 
     // ========== TOKENS ==========
@@ -102,27 +125,6 @@ const dbService = {
         return Promise.resolve();
     },
 
-    // ========== CORREOS POR CUENTA ==========
-    getUltimoCorreoPorCuenta: (email) => {
-        const key = email.toLowerCase();
-        const correos = datos.correosPorCuenta[key] || [];
-        return Promise.resolve(correos.length > 0 ? correos[correos.length - 1] : null);
-    },
-
-    guardarCorreoParaCuenta: (email, correo) => {
-        const key = email.toLowerCase();
-        if (!datos.correosPorCuenta[key]) {
-            datos.correosPorCuenta[key] = [];
-        }
-        // Evitar duplicados (por ID)
-        const existe = datos.correosPorCuenta[key].some(c => c.id === correo.id);
-        if (!existe) {
-            datos.correosPorCuenta[key].push(correo);
-            console.log(`📧 Correo guardado para ${email}: ${correo.subject}`);
-        }
-        return Promise.resolve();
-    },
-
     // ========== ESTADÍSTICAS ==========
     getEstadisticas: () => {
         const activos = datos.destinatarios.filter(d => d.activo !== 0);
@@ -137,7 +139,7 @@ const dbService = {
         });
     },
 
-    // ========== CORREO GLOBAL (para compatibilidad) ==========
+    // ========== CORREO GLOBAL ==========
     getUltimoCorreo: () => {
         return Promise.resolve(ultimoCorreo);
     },
@@ -155,7 +157,8 @@ const dbService = {
             tokens: datos.tokensEnviados,
             config: datos.configuracion,
             ultimoCorreo: ultimoCorreo,
-            correosPorCuenta: datos.correosPorCuenta
+            refreshTokensPorCliente: datos.refreshTokensPorCliente,
+            ultimoCorreoPorCliente: datos.ultimoCorreoPorCliente
         };
     }
 };
