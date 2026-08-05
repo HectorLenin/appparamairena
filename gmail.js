@@ -1,10 +1,6 @@
 const { google } = require('googleapis');
 const db = require('./database');
 
-// ============================================
-// GENERAR URL DE AUTORIZACIÓN PARA UN CLIENTE
-// ============================================
-
 function getAuthUrl(email) {
     const oAuth2Client = new google.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,
@@ -26,10 +22,6 @@ function getAuthUrl(email) {
 
     return authUrl;
 }
-
-// ============================================
-// INTERCAMBIAR CÓDIGO POR REFRESH TOKEN
-// ============================================
 
 async function exchangeCodeForToken(email, code) {
     try {
@@ -57,10 +49,6 @@ async function exchangeCodeForToken(email, code) {
         throw error;
     }
 }
-
-// ============================================
-// LEER CORREO DE NETFLIX (GLOBAL - ADMIN)
-// ============================================
 
 async function leerCorreoCompleto() {
     try {
@@ -133,7 +121,8 @@ async function leerCorreoCompleto() {
             cuerpoHTML = cuerpoTexto.replace(/\n/g, '<br>');
         }
 
-        const tokenRegex = /NF-[A-Z0-9]{4}-[A-Z0-9]{4}|[A-Z0-9]{4}-[A-Z0-9]{4}|[A-Z0-9]{8}/i;
+        // 🔥 SOLO FORMATO EXACTO DE NETFLIX
+        const tokenRegex = /NF-[A-Z0-9]{4}-[A-Z0-9]{4}/i;
         const match = cuerpoHTML.match(tokenRegex) || cuerpoTexto.match(tokenRegex);
         const token = match ? match[0].toUpperCase() : null;
 
@@ -163,10 +152,6 @@ async function leerCorreoCompleto() {
     }
 }
 
-// ============================================
-// LEER CORREO PARA UN CLIENTE ESPECÍFICO
-// ============================================
-
 async function leerCorreoParaCliente(email) {
     try {
         console.log(`📨 Buscando correo de Netflix para ${email}...`);
@@ -195,7 +180,6 @@ async function leerCorreoParaCliente(email) {
 
         const gmail = google.gmail({ version: 'v1', auth });
 
-        // 🔥 BUSCAR EN LOS ÚLTIMOS 30 DÍAS
         const fechaLimite = Math.floor(Date.now() / 1000 - 30 * 24 * 60 * 60);
         const query = `from:netflix.com OR from:no-reply@netflix.com OR from:info@netflix.com after:${fechaLimite}`;
         
@@ -255,7 +239,8 @@ async function leerCorreoParaCliente(email) {
             cuerpoHTML = cuerpoTexto.replace(/\n/g, '<br>');
         }
 
-        const tokenRegex = /NF-[A-Z0-9]{4}-[A-Z0-9]{4}|[A-Z0-9]{4}-[A-Z0-9]{4}|[A-Z0-9]{8}/i;
+        // 🔥 SOLO FORMATO EXACTO DE NETFLIX
+        const tokenRegex = /NF-[A-Z0-9]{4}-[A-Z0-9]{4}/i;
         const match = cuerpoHTML.match(tokenRegex) || cuerpoTexto.match(tokenRegex);
         const token = match ? match[0].toUpperCase() : null;
 
@@ -288,10 +273,6 @@ async function leerCorreoParaCliente(email) {
     }
 }
 
-// ============================================
-// VERIFICAR SI HAY TOKEN NUEVO (para el cron)
-// ============================================
-
 async function hayTokenNuevo() {
     try {
         console.log('🔍 Verificando si hay token nuevo...');
@@ -310,10 +291,6 @@ async function hayTokenNuevo() {
         return null;
     }
 }
-
-// ============================================
-// EXPORTAR
-// ============================================
 
 module.exports = {
     getAuthUrl,
