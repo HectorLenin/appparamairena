@@ -181,7 +181,7 @@ async function leerCorreoParaCliente(email) {
         }
 
         if (!refreshToken) {
-            console.log(`⚠️ No hay refresh token para ${email}. El cliente debe autorizar la app.`);
+            console.log(`⚠️ No hay refresh token para ${email}. El usuario debe autorizar la app.`);
             return null;
         }
 
