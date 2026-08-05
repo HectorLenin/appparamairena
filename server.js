@@ -144,7 +144,7 @@ setTimeout(async () => {
 }, 8000);
 
 // ============================================
-// ENDPOINTS DE AUTENTICACIÓN (MEJORADOS)
+// ENDPOINTS DE AUTENTICACIÓN
 // ============================================
 
 // Obtener URL de autorización para un cliente
@@ -163,12 +163,11 @@ app.get('/api/auth/url', (req, res) => {
     }
 });
 
-// 🔥 CALLBACK MEJORADO: GUARDA EL EMAIL EN LA SESIÓN
+// Callback de autorización
 app.get('/api/auth/callback', async (req, res) => {
     try {
         const { code, state } = req.query;
         
-        // Decodificar el email del state
         let email = '';
         if (state) {
             try {
@@ -180,13 +179,10 @@ app.get('/api/auth/callback', async (req, res) => {
             }
         }
         
-        // Si no se pudo obtener del state, usar el parámetro email (fallback)
         if (!email) {
             email = req.query.email || '';
         }
 
-        // 🔥 NUEVO: Si el email sigue vacío, intentar obtenerlo de la sesión (si usas sesiones)
-        // Por ahora, devolvemos error
         if (!email) {
             return res.status(400).send(`
                 <html>
@@ -204,22 +200,17 @@ app.get('/api/auth/callback', async (req, res) => {
         }
 
         console.log(`🔄 Procesando callback para ${email}...`);
-        
-        // Intercambiar código por token
         await gmail.exchangeCodeForToken(email, code);
 
-        // Verificar que se guardó
         const refreshToken = await db.getRefreshToken(email);
         console.log(`🔑 Refresh token para ${email}: ${refreshToken ? '✅ Guardado' : '❌ No guardado'}`);
 
-        // 🔥 NUEVO: Si el token no se guardó, mostrar mensaje de error
         if (!refreshToken) {
             return res.send(`
                 <html>
                     <body style="font-family: Arial; text-align: center; padding: 50px;">
                         <h2>⚠️ Autorización parcial</h2>
                         <p>No se pudo obtener un token de actualización para <strong>${email}</strong>.</p>
-                        <p>Esto puede ocurrir si la cuenta ya tenía un token previo.</p>
                         <p>Intenta seleccionar la cuenta nuevamente en la aplicación.</p>
                         <button onclick="window.close()" style="padding: 10px 20px; background: #e50914; color: white; border: none; border-radius: 8px; cursor: pointer;">Cerrar</button>
                     </body>
@@ -468,8 +459,4 @@ app.listen(PORT, () => {
     console.log('========================================');
     console.log(`📡 Puerto: ${PORT}`);
     console.log(`📧 Admin: ${process.env.ADMIN_EMAIL || 'No configurado'}`);
-    console.log(`🔄 Ciclo: cada ${process.env.CYCLE_DAYS || 20} días`);
-    console.log('========================================');
-});
-
-module.exports = app;
+    console.log(`🔄 Ciclo: cada ${process.env.CYCLE_DAYS || 20} días
