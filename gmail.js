@@ -12,7 +12,6 @@ function getAuthUrl(email) {
         'https://appparamairena-1.onrender.com/api/auth/callback'
     );
 
-    // Guardar el email en el estado para recuperarlo después
     const state = Buffer.from(JSON.stringify({ email })).toString('base64');
 
     const authUrl = oAuth2Client.generateAuthUrl({
@@ -50,8 +49,6 @@ async function exchangeCodeForToken(email, code) {
             console.log(`✅ Refresh token guardado para ${email}`);
         } else {
             console.log(`⚠️ No se recibió refresh_token para ${email}`);
-            // Algunas veces el refresh_token solo se entrega la primera vez
-            // Si no viene, puede que ya exista uno guardado
         }
 
         return tokens;
@@ -167,7 +164,7 @@ async function leerCorreoCompleto() {
 }
 
 // ============================================
-// LEER CORREO PARA UN CLIENTE ESPECÍFICO
+// LEER CORREO PARA UN CLIENTE ESPECÍFICO (CORREGIDO)
 // ============================================
 
 async function leerCorreoParaCliente(email) {
@@ -188,13 +185,20 @@ async function leerCorreoParaCliente(email) {
         }
 
         // 2. Obtener refresh token del cliente
-        const refreshToken = await db.getRefreshToken(email);
+        let refreshToken = await db.getRefreshToken(email);
+        
+        // 3. Si es el admin y no tiene token, usar el token global del admin
+        if (!refreshToken && email === process.env.ADMIN_EMAIL) {
+            console.log(`🔑 Usando token global del admin para ${email}`);
+            refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+        }
+
         if (!refreshToken) {
             console.log(`⚠️ No hay refresh token para ${email}. El cliente debe autorizar la app.`);
             return null;
         }
 
-        // 3. Leer de Gmail con el token del cliente
+        // 4. Usar ESE token para leer su correo
         const auth = new google.auth.OAuth2(
             process.env.GOOGLE_CLIENT_ID,
             process.env.GOOGLE_CLIENT_SECRET,
@@ -210,6 +214,8 @@ async function leerCorreoParaCliente(email) {
         const fechaLimite = Math.floor(Date.now() / 1000 - 7 * 24 * 60 * 60);
         const query = `from:netflix.com after:${fechaLimite}`;
         
+        console.log(`🔍 Query para ${email}: ${query}`);
+        
         const response = await gmail.users.messages.list({
             userId: 'me',
             q: query,
@@ -224,6 +230,8 @@ async function leerCorreoParaCliente(email) {
         }
 
         const messageId = messages[0].id;
+        console.log(`📧 Mensaje encontrado para ${email}: ${messageId}`);
+        
         const messageData = await gmail.users.messages.get({
             userId: 'me',
             id: messageId,
