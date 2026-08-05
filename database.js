@@ -10,9 +10,7 @@ const datos = {
         ultimo_token_fecha: '',
         ultimo_envio_fecha: ''
     },
-    // NUEVO: Guardar refresh tokens de cada cliente
     refreshTokensPorCliente: {},
-    // NUEVO: Guardar último correo de cada cliente
     ultimoCorreoPorCliente: {}
 };
 
