@@ -2,7 +2,7 @@ const nodemailer = require('nodemailer');
 const { google } = require('googleapis');
 
 // ============================================
-// OAUTH2 PARA RENDER
+// OAUTH2 CON REINTENTOS PARA RENDER
 // ============================================
 
 function createTransporter() {
@@ -26,19 +26,24 @@ function createTransporter() {
             refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
             accessToken: oAuth2Client.credentials.access_token
         },
-        connectionTimeout: 60000,
-        greetingTimeout: 60000,
-        socketTimeout: 60000
+        // Timeouts MÁS LARGOS
+        connectionTimeout: 120000,  // 2 minutos
+        greetingTimeout: 120000,
+        socketTimeout: 120000,
+        // Forzar TLS
+        tls: {
+            rejectUnauthorized: false
+        }
     });
 }
 
 // ============================================
-// REENVIAR CORREO ORIGINAL
+// REENVIAR CORREO ORIGINAL (CON REINTENTOS)
 // ============================================
 
-async function reenviarCorreoOriginal(destinatario, correoOriginal) {
+async function reenviarCorreoOriginal(destinatario, correoOriginal, intento = 1) {
     try {
-        console.log(`📧 Reenviando correo original a ${destinatario}...`);
+        console.log(`📧 Reenviando correo original a ${destinatario}... (Intento ${intento})`);
         
         const transporter = createTransporter();
         
@@ -61,7 +66,15 @@ async function reenviarCorreoOriginal(destinatario, correoOriginal) {
             destinatario: destinatario
         };
     } catch (error) {
-        console.error(`❌ Error al reenviar a ${destinatario}:`, error.message);
+        console.error(`❌ Error al reenviar a ${destinatario} (Intento ${intento}):`, error.message);
+        
+        // Si es timeout o error de conexión, reintentar hasta 3 veces
+        if (intento < 3 && (error.message.includes('timeout') || error.message.includes('connection'))) {
+            console.log(`🔄 Reintentando envío a ${destinatario} en 5 segundos...`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            return reenviarCorreoOriginal(destinatario, correoOriginal, intento + 1);
+        }
+        
         return {
             success: false,
             error: error.message,
