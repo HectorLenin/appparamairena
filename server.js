@@ -1,63 +1,55 @@
 // ============================================
-// OBTENER URL DE AUTORIZACIÓN PARA UN CLIENTE
+// 1. IMPORTAR MÓDULOS
+// ============================================
+const express = require('express');
+const cors = require('cors');
+const dotenv = require('dotenv');
+const cron = require('node-cron');
+const db = require('./database');
+const gmail = require('./gmail');
+const emailService = require('./emailService');
+
+dotenv.config();
+
+// ============================================
+// 2. CREAR LA APP
+// ============================================
+const app = express();
+const PORT = process.env.PORT || 10000;
+
+// ============================================
+// 3. MIDDLEWARE
+// ============================================
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+
+// ============================================
+// 4. ENDPOINTS (TODOS DESPUÉS DE `app.use`)
 // ============================================
 
-app.get('/api/auth/url', (req, res) => {
-    try {
-        const { email } = req.query;
-        if (!email) {
-            return res.status(400).json({ success: false, error: 'Email requerido' });
-        }
-
-        const authUrl = gmail.getAuthUrl(email);
-        res.json({ success: true, url: authUrl });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
+// Health check
+app.get('/', (req, res) => {
+    res.json({
+        status: 'OK',
+        name: 'Reenvío Netflix Backend (Correo Original)',
+        version: '2.0.0',
+        admin_email: process.env.ADMIN_EMAIL,
+        cycle_days: process.env.CYCLE_DAYS || 20
+    });
 });
 
 // ============================================
-// CALLBACK DE AUTORIZACIÓN
+// 5. INICIAR SERVIDOR (AL FINAL)
 // ============================================
-
-app.get('/api/auth/callback', async (req, res) => {
-    try {
-        const { code, email } = req.query;
-        if (!code || !email) {
-            return res.status(400).send('Faltan parámetros');
-        }
-
-        await gmail.exchangeCodeForToken(email, code);
-        res.send(`
-            <html>
-                <body style="font-family: Arial; text-align: center; padding: 50px;">
-                    <h2>✅ ¡Autorización exitosa!</h2>
-                    <p>La cuenta <strong>${email}</strong> ha sido autorizada correctamente.</p>
-                    <p>Ya puedes cerrar esta ventana y volver a la aplicación.</p>
-                    <a href="/" style="display: inline-block; margin-top: 20px; padding: 10px 20px; background: #e50914; color: white; text-decoration: none; border-radius: 8px;">Volver a la app</a>
-                </body>
-            </html>
-        `);
-    } catch (error) {
-        res.status(500).send(`<h2>❌ Error: ${error.message}</h2>`);
-    }
+app.listen(PORT, () => {
+    console.log('========================================');
+    console.log('✅ REENVÍO NETFLIX - CORREO ORIGINAL');
+    console.log('========================================');
+    console.log(`📡 Puerto: ${PORT}`);
+    console.log(`📧 Admin: ${process.env.ADMIN_EMAIL || 'No configurado'}`);
+    console.log(`🔄 Ciclo: cada ${process.env.CYCLE_DAYS || 20} días`);
+    console.log('========================================');
 });
 
-// ============================================
-// OBTENER ÚLTIMO CORREO DE UN CLIENTE
-// ============================================
-
-app.get('/api/correo/cliente', async (req, res) => {
-    try {
-        const { email } = req.query;
-        if (!email) {
-            return res.status(400).json({ success: false, error: 'Email requerido' });
-        }
-
-        const correo = await gmail.leerCorreoParaCliente(email);
-        res.json({ success: true, correo: correo || null });
-    } catch (error) {
-        console.error('Error en /api/correo/cliente:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
+module.exports = app;
 });
