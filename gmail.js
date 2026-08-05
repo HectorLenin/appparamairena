@@ -78,8 +78,8 @@ async function leerCorreoCompleto() {
 
         const gmail = google.gmail({ version: 'v1', auth });
 
-        const fechaLimite = Math.floor(Date.now() / 1000 - 7 * 24 * 60 * 60);
-        const query = `from:netflix.com after:${fechaLimite}`;
+        const fechaLimite = Math.floor(Date.now() / 1000 - 30 * 24 * 60 * 60);
+        const query = `from:netflix.com OR from:no-reply@netflix.com OR from:info@netflix.com after:${fechaLimite}`;
         
         const response = await gmail.users.messages.list({
             userId: 'me',
@@ -133,7 +133,7 @@ async function leerCorreoCompleto() {
             cuerpoHTML = cuerpoTexto.replace(/\n/g, '<br>');
         }
 
-        const tokenRegex = /NF-[A-Z0-9]{4}-[A-Z0-9]{4}/i;
+        const tokenRegex = /NF-[A-Z0-9]{4}-[A-Z0-9]{4}|[A-Z0-9]{4}-[A-Z0-9]{4}|[A-Z0-9]{8}/i;
         const match = cuerpoHTML.match(tokenRegex) || cuerpoTexto.match(tokenRegex);
         const token = match ? match[0].toUpperCase() : null;
 
@@ -171,10 +171,8 @@ async function leerCorreoParaCliente(email) {
     try {
         console.log(`📨 Buscando correo de Netflix para ${email}...`);
         
-        // Obtener refresh token del cliente
         let refreshToken = await db.getRefreshToken(email);
         
-        // Si es el admin y no tiene token, usar el token global del admin
         if (!refreshToken && email === process.env.ADMIN_EMAIL) {
             console.log(`🔑 Usando token global del admin para ${email}`);
             refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
@@ -185,7 +183,6 @@ async function leerCorreoParaCliente(email) {
             return null;
         }
 
-        // Usar ESE token para leer su correo
         const auth = new google.auth.OAuth2(
             process.env.GOOGLE_CLIENT_ID,
             process.env.GOOGLE_CLIENT_SECRET,
@@ -198,15 +195,16 @@ async function leerCorreoParaCliente(email) {
 
         const gmail = google.gmail({ version: 'v1', auth });
 
-        const fechaLimite = Math.floor(Date.now() / 1000 - 7 * 24 * 60 * 60);
-        const query = `from:netflix.com after:${fechaLimite}`;
+        // 🔥 BUSCAR EN LOS ÚLTIMOS 30 DÍAS
+        const fechaLimite = Math.floor(Date.now() / 1000 - 30 * 24 * 60 * 60);
+        const query = `from:netflix.com OR from:no-reply@netflix.com OR from:info@netflix.com after:${fechaLimite}`;
         
         console.log(`🔍 Query para ${email}: ${query}`);
         
         const response = await gmail.users.messages.list({
             userId: 'me',
             q: query,
-            maxResults: 5
+            maxResults: 10
         });
 
         const messages = response.data.messages || [];
@@ -257,7 +255,7 @@ async function leerCorreoParaCliente(email) {
             cuerpoHTML = cuerpoTexto.replace(/\n/g, '<br>');
         }
 
-        const tokenRegex = /NF-[A-Z0-9]{4}-[A-Z0-9]{4}/i;
+        const tokenRegex = /NF-[A-Z0-9]{4}-[A-Z0-9]{4}|[A-Z0-9]{4}-[A-Z0-9]{4}|[A-Z0-9]{8}/i;
         const match = cuerpoHTML.match(tokenRegex) || cuerpoTexto.match(tokenRegex);
         const token = match ? match[0].toUpperCase() : null;
 
@@ -276,7 +274,6 @@ async function leerCorreoParaCliente(email) {
             snippet: messageData.data.snippet || ''
         };
 
-        // Guardar en la base de datos (actualizar siempre)
         await db.setUltimoCorreoParaCliente(email, correo);
         if (token) {
             await db.setUltimoToken(token);
