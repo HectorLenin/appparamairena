@@ -11,9 +11,15 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// ============================================
+// MIDDLEWARE
+// ============================================
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// ============================================
+// HEALTH CHECK
+// ============================================
 app.get('/', (req, res) => {
     res.json({
         status: 'OK',
@@ -98,15 +104,19 @@ async function procesarYReenviar(emailsSeleccionados = null) {
 }
 
 // ============================================
-// CRON Y DESTINATARIOS POR DEFECTO
+// CRON - CADA 20 DÍAS
 // ============================================
 cron.schedule('0 9 */20 * *', async () => {
     console.log('⏰ Ejecutando tarea programada...');
     await procesarYReenviar();
 });
 
+// ============================================
+// AGREGAR DESTINATARIOS POR DEFECTO
+// ============================================
 setTimeout(async () => {
     console.log('📋 Agregando destinatarios por defecto...');
+    
     const destinatariosPorDefecto = [
         'pollochucohn1@gmail.com',
         '1305sofiathelma@gmail.com',
@@ -117,6 +127,7 @@ setTimeout(async () => {
         'Cuentasmairena.123@gmail.com',
         'Osohonduras2026@gmail.com'
     ];
+    
     for (const email of destinatariosPorDefecto) {
         const agregado = await db.addDestinatario(email);
         if (agregado) {
@@ -125,20 +136,176 @@ setTimeout(async () => {
             console.log(`ℹ️ El destinatario ya existe: ${email}`);
         }
     }
+    
     console.log('🚀 Forzando reenvío después de agregar destinatarios...');
     const resultado = await procesarYReenviar();
     console.log('📊 Resultado del reenvío:', resultado);
+    
 }, 8000);
 
 // ============================================
-// ENDPOINTS (SOLO LOS ESENCIALES PARA PROBAR)
+// ENDPOINTS DE AUTENTICACIÓN
 // ============================================
+
+// Obtener URL de autorización para un cliente
+app.get('/api/auth/url', (req, res) => {
+    try {
+        const { email } = req.query;
+        if (!email) {
+            return res.status(400).json({ success: false, error: 'Email requerido' });
+        }
+
+        const authUrl = gmail.getAuthUrl(email);
+        res.json({ success: true, url: authUrl });
+    } catch (error) {
+        console.error('Error en /api/auth/url:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Callback de autorización
+app.get('/api/auth/callback', async (req, res) => {
+    try {
+        const { code, state } = req.query;
+        
+        let email = '';
+        if (state) {
+            try {
+                const decoded = Buffer.from(state, 'base64').toString('utf-8');
+                const data = JSON.parse(decoded);
+                email = data.email;
+            } catch (e) {
+                console.log('⚠️ Error decodificando state, usando fallback');
+            }
+        }
+        
+        if (!email) {
+            email = req.query.email || '';
+        }
+
+        if (!email) {
+            return res.status(400).send(`
+                <html>
+                    <body style="font-family: Arial; text-align: center; padding: 50px;">
+                        <h2>❌ Error: No se pudo identificar la cuenta</h2>
+                        <p>Vuelve a intentarlo desde la aplicación.</p>
+                        <button onclick="window.close()" style="padding: 10px 20px; background: #e50914; color: white; border: none; border-radius: 8px; cursor: pointer;">Cerrar</button>
+                    </body>
+                </html>
+            `);
+        }
+
+        if (!code) {
+            return res.status(400).send('Faltan parámetros');
+        }
+
+        console.log(`🔄 Procesando callback para ${email}...`);
+        await gmail.exchangeCodeForToken(email, code);
+
+        const refreshToken = await db.getRefreshToken(email);
+        console.log(`🔑 Refresh token para ${email}: ${refreshToken ? '✅ Guardado' : '❌ No guardado'}`);
+
+        if (!refreshToken) {
+            return res.send(`
+                <html>
+                    <body style="font-family: Arial; text-align: center; padding: 50px;">
+                        <h2>⚠️ Autorización parcial</h2>
+                        <p>No se pudo obtener un token de actualización para <strong>${email}</strong>.</p>
+                        <p>Intenta seleccionar la cuenta nuevamente en la aplicación.</p>
+                        <button onclick="window.close()" style="padding: 10px 20px; background: #e50914; color: white; border: none; border-radius: 8px; cursor: pointer;">Cerrar</button>
+                    </body>
+                </html>
+            `);
+        }
+
+        res.send(`
+            <html>
+                <body style="font-family: Arial; text-align: center; padding: 50px;">
+                    <h2>✅ ¡Autorización exitosa!</h2>
+                    <p>La cuenta <strong>${email}</strong> ha sido autorizada correctamente.</p>
+                    <p>Ya puedes cerrar esta ventana y volver a la aplicación.</p>
+                    <p>Selecciona la cuenta nuevamente para ver su correo.</p>
+                    <button onclick="window.close()" style="padding: 10px 20px; background: #e50914; color: white; border: none; border-radius: 8px; cursor: pointer;">Cerrar ventana</button>
+                </body>
+            </html>
+        `);
+    } catch (error) {
+        console.error('Error en /api/auth/callback:', error);
+        res.status(500).send(`
+            <html>
+                <body style="font-family: Arial; text-align: center; padding: 50px;">
+                    <h2>❌ Error en la autorización</h2>
+                    <p><strong>${error.message}</strong></p>
+                    <p>Vuelve a intentarlo desde la aplicación.</p>
+                    <button onclick="window.close()" style="padding: 10px 20px; background: #e50914; color: white; border: none; border-radius: 8px; cursor: pointer;">Cerrar</button>
+                </body>
+            </html>
+        `);
+    }
+});
+
+// ============================================
+// ENDPOINTS DE CORREO EN TIEMPO REAL
+// ============================================
+
+// Obtener último correo de un cliente
+app.get('/api/correo/cliente', async (req, res) => {
+    try {
+        const { email } = req.query;
+        if (!email) {
+            return res.status(400).json({ success: false, error: 'Email requerido' });
+        }
+
+        const correo = await gmail.leerCorreoParaCliente(email);
+        res.json({ success: true, correo: correo || null });
+    } catch (error) {
+        console.error('Error en /api/correo/cliente:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Actualizar correo en tiempo real
+app.post('/api/correo/actualizar', async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) {
+            return res.status(400).json({ success: false, error: 'Email requerido' });
+        }
+
+        console.log(`🔄 Actualizando correo en tiempo real para ${email}...`);
+        const correo = await gmail.leerCorreoParaCliente(email);
+        
+        if (correo) {
+            await db.setUltimoCorreoParaCliente(email, correo);
+            res.json({ 
+                success: true, 
+                message: 'Correo actualizado',
+                correo: correo
+            });
+        } else {
+            res.json({ 
+                success: false, 
+                message: 'No se encontraron correos nuevos',
+                correo: null
+            });
+        }
+    } catch (error) {
+        console.error('Error en /api/correo/actualizar:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============================================
+// ENDPOINTS GENERALES
+// ============================================
+
 app.get('/api/estado', async (req, res) => {
     try {
         const stats = await db.getEstadisticas();
         const ultimoToken = await db.getUltimoToken();
         const ultimoEnvio = await db.getUltimoEnvio();
         const destinatarios = await db.getDestinatarios();
+        
         res.json({
             success: true,
             estado: {
@@ -153,6 +320,7 @@ app.get('/api/estado', async (req, res) => {
             }
         });
     } catch (error) {
+        console.error('Error en /api/estado:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -166,23 +334,26 @@ app.get('/api/destinatarios', async (req, res) => {
             total: destinatarios.length
         });
     } catch (error) {
+        console.error('Error en /api/destinatarios:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
 app.post('/api/destinatarios', async (req, res) => {
     try {
-        const { email } = req.body;
+        const { email, nombre } = req.body;
         if (!email || !email.includes('@')) {
             return res.status(400).json({ success: false, error: 'Correo inválido' });
         }
-        const agregado = await db.addDestinatario(email);
+        
+        const agregado = await db.addDestinatario(email, nombre || '');
         if (agregado) {
             res.json({ success: true, message: 'Correo agregado' });
         } else {
             res.status(400).json({ success: false, error: 'El correo ya existe' });
         }
     } catch (error) {
+        console.error('Error en /api/destinatarios POST:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -197,6 +368,7 @@ app.delete('/api/destinatarios/:email', async (req, res) => {
             res.status(404).json({ success: false, error: 'Correo no encontrado' });
         }
     } catch (error) {
+        console.error('Error en /api/destinatarios DELETE:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -204,10 +376,16 @@ app.delete('/api/destinatarios/:email', async (req, res) => {
 app.post('/api/reenviar', async (req, res) => {
     try {
         const { emails } = req.body;
+        
         if (!emails || emails.length === 0) {
-            return res.status(400).json({ success: false, error: 'Selecciona al menos un destinatario' });
+            return res.status(400).json({
+                success: false,
+                error: 'Selecciona al menos un destinatario'
+            });
         }
+
         const resultado = await procesarYReenviar(emails);
+        
         res.json({
             success: resultado.success,
             message: resultado.message || 'Reenvío completado',
@@ -215,7 +393,9 @@ app.post('/api/reenviar', async (req, res) => {
             exitosos: resultado.exitosos || 0,
             fallidos: resultado.fallidos || 0
         });
+
     } catch (error) {
+        console.error('Error en /api/reenviar:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -224,59 +404,80 @@ app.post('/api/token/manual', async (req, res) => {
     try {
         const { token } = req.body;
         if (!token || token.length < 5) {
-            return res.status(400).json({ success: false, error: 'Token inválido' });
+            return res.status(400).json({
+                success: false,
+                error: 'Token inválido'
+            });
         }
+
         await db.setUltimoToken(token);
         await db.setUltimoEnvio(new Date().toISOString());
-        res.json({ success: true, message: 'Token guardado manualmente', token });
+
+        res.json({
+            success: true,
+            message: 'Token guardado manualmente',
+            token: token
+        });
+
     } catch (error) {
+        console.error('Error en /api/token/manual:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-app.get('/api/correo/cliente', async (req, res) => {
+app.get('/api/token/actual', async (req, res) => {
+    try {
+        const token = await db.getUltimoToken();
+        res.json({
+            success: true,
+            token: token || 'No hay token',
+            fecha: await db.getUltimoEnvio()
+        });
+    } catch (error) {
+        console.error('Error en /api/token/actual:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/correo/ultimo', async (req, res) => {
     try {
         const { email } = req.query;
+        
         if (!email) {
-            return res.status(400).json({ success: false, error: 'Email requerido' });
+            const correo = await db.getUltimoCorreo();
+            return res.json({ success: true, correo: correo || null });
         }
-        const correo = await gmail.leerCorreoParaCliente(email);
+
+        const correo = await db.getUltimoCorreoParaCliente(email);
         res.json({ success: true, correo: correo || null });
     } catch (error) {
+        console.error('Error en /api/correo/ultimo:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-app.post('/api/correo/actualizar', async (req, res) => {
+app.post('/api/correo/forzar', async (req, res) => {
     try {
         const { email } = req.body;
-        if (!email) {
-            return res.status(400).json({ success: false, error: 'Email requerido' });
-        }
-        console.log(`🔄 Actualizando correo en tiempo real para ${email}...`);
-        const correo = await gmail.leerCorreoParaCliente(email);
-        if (correo) {
-            await db.setUltimoCorreoParaCliente(email, correo);
-            res.json({ success: true, message: 'Correo actualizado', correo });
+        console.log(`🔄 Forzando revisión de correos para ${email || 'todos'}...`);
+        
+        if (email) {
+            const correo = await gmail.leerCorreoParaCliente(email);
+            if (correo) {
+                await db.setUltimoCorreoParaCliente(email, correo);
+                return res.json({ success: true, message: `Correo actualizado para ${email}` });
+            }
         } else {
-            res.json({ success: false, message: 'No se encontraron correos nuevos', correo: null });
+            const correo = await gmail.leerCorreoCompleto();
+            if (correo) {
+                const destinatarios = await db.getDestinatarios();
+                for (const d of destinatarios) {
+                    await db.setUltimoCorreoParaCliente(d.email, correo);
+                }
+                return res.json({ success: true, message: 'Correos actualizados para todos' });
+            }
         }
+        
+        res.json({ success: false, message: 'No se encontraron correos nuevos' });
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// ============================================
-// INICIAR SERVIDOR
-// ============================================
-app.listen(PORT, () => {
-    console.log('========================================');
-    console.log('✅ REENVÍO NETFLIX - CORREO ORIGINAL');
-    console.log('========================================');
-    console.log(`📡 Puerto: ${PORT}`);
-    console.log(`📧 Admin: ${process.env.ADMIN_EMAIL || 'No configurado'}`);
-    console.log(`🔄 Ciclo: cada ${process.env.CYCLE_DAYS || 20} días`);
-    console.log('========================================');
-});
-
-module.exports = app;
+        console.error('Error en /api/correo/forzar:', error);
