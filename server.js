@@ -459,4 +459,8 @@ app.listen(PORT, () => {
     console.log('========================================');
     console.log(`📡 Puerto: ${PORT}`);
     console.log(`📧 Admin: ${process.env.ADMIN_EMAIL || 'No configurado'}`);
-    console.log(`🔄 Ciclo: cada ${process.env.CYCLE_DAYS || 20} días
+    console.log(`🔄 Ciclo: cada ${process.env.CYCLE_DAYS || 20} días`);
+    console.log('========================================');
+});
+
+module.exports = app;
