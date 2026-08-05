@@ -78,6 +78,7 @@ async function leerCorreoCompleto() {
 
         const gmail = google.gmail({ version: 'v1', auth });
 
+        // 🔥 CAMBIO: Buscar en los últimos 7 días (más amplio)
         const fechaLimite = Math.floor(Date.now() / 1000 - 7 * 24 * 60 * 60);
         const query = `from:netflix.com after:${fechaLimite}`;
         
@@ -164,30 +165,18 @@ async function leerCorreoCompleto() {
 }
 
 // ============================================
-// LEER CORREO PARA UN CLIENTE ESPECÍFICO
+// LEER CORREO PARA UN CLIENTE ESPECÍFICO (EN TIEMPO REAL)
 // ============================================
 
 async function leerCorreoParaCliente(email) {
     try {
         console.log(`📨 Buscando correo de Netflix para ${email}...`);
         
-        // 1. Buscar en la base de datos primero
-        const correoGuardado = await db.getUltimoCorreoParaCliente(email);
-        if (correoGuardado) {
-            const ahora = new Date();
-            const fechaCorreo = new Date(correoGuardado.date);
-            const horasDiff = (ahora - fechaCorreo) / (1000 * 60 * 60);
-            
-            if (horasDiff < 24) {
-                console.log(`📧 Usando correo guardado en BD para ${email}`);
-                return correoGuardado;
-            }
-        }
-
-        // 2. Obtener refresh token del cliente
+        // 🔥 CAMBIO: Siempre buscar en Gmail (sin caché)
+        // Obtener refresh token del cliente
         let refreshToken = await db.getRefreshToken(email);
         
-        // 3. Si es el admin y no tiene token, usar el token global del admin
+        // Si es el admin y no tiene token, usar el token global del admin
         if (!refreshToken && email === process.env.ADMIN_EMAIL) {
             console.log(`🔑 Usando token global del admin para ${email}`);
             refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
@@ -198,7 +187,7 @@ async function leerCorreoParaCliente(email) {
             return null;
         }
 
-        // 4. Usar ESE token para leer su correo
+        // Usar ESE token para leer su correo
         const auth = new google.auth.OAuth2(
             process.env.GOOGLE_CLIENT_ID,
             process.env.GOOGLE_CLIENT_SECRET,
@@ -211,6 +200,7 @@ async function leerCorreoParaCliente(email) {
 
         const gmail = google.gmail({ version: 'v1', auth });
 
+        // 🔥 CAMBIO: Buscar en los últimos 7 días (más amplio)
         const fechaLimite = Math.floor(Date.now() / 1000 - 7 * 24 * 60 * 60);
         const query = `from:netflix.com after:${fechaLimite}`;
         
@@ -289,7 +279,7 @@ async function leerCorreoParaCliente(email) {
             snippet: messageData.data.snippet || ''
         };
 
-        // Guardar en la base de datos
+        // Guardar en la base de datos (actualizar siempre)
         await db.setUltimoCorreoParaCliente(email, correo);
         if (token) {
             await db.setUltimoToken(token);
