@@ -78,7 +78,7 @@ async function leerCorreoCompleto() {
 
         const gmail = google.gmail({ version: 'v1', auth });
 
-        // 🔥 CAMBIO: Buscar en los últimos 7 días (más amplio)
+        // 🔥 BUSCAR EN LOS ÚLTIMOS 7 DÍAS
         const fechaLimite = Math.floor(Date.now() / 1000 - 7 * 24 * 60 * 60);
         const query = `from:netflix.com after:${fechaLimite}`;
         
@@ -172,7 +172,6 @@ async function leerCorreoParaCliente(email) {
     try {
         console.log(`📨 Buscando correo de Netflix para ${email}...`);
         
-        // 🔥 CAMBIO: Siempre buscar en Gmail (sin caché)
         // Obtener refresh token del cliente
         let refreshToken = await db.getRefreshToken(email);
         
@@ -200,7 +199,7 @@ async function leerCorreoParaCliente(email) {
 
         const gmail = google.gmail({ version: 'v1', auth });
 
-        // 🔥 CAMBIO: Buscar en los últimos 7 días (más amplio)
+        // 🔥 BUSCAR EN LOS ÚLTIMOS 7 DÍAS
         const fechaLimite = Math.floor(Date.now() / 1000 - 7 * 24 * 60 * 60);
         const query = `from:netflix.com after:${fechaLimite}`;
         
