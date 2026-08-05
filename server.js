@@ -116,15 +116,15 @@ setTimeout(async () => {
     console.log('📋 Agregando destinatarios por defecto...');
     
     const destinatariosPorDefecto = [
-        'pollochucohn1@gmail.com'
-         '1305sofiathelma@gmail.com'
-        'unacuentamas1305@gmail.com'
-       'Unacuentamas1007.hn@gmail.com'
-        '1305cuentasvideo@gmail.com'
-        'Lafamiliaprimero.1305@gmail.com'
-        'Cuentasmairena.123@gmail.com'
-          'Osohonduras2026@gmail.com'
-    ];
+    'pollochucohn1@gmail.com',
+    '1305sofiathelma@gmail.com',
+    'unacuentamas1305@gmail.com',
+    'Unacuentamas1007.hn@gmail.com',
+    '1305cuentasvideo@gmail.com',
+    'Lafamiliaprimero.1305@gmail.com',
+    'Cuentasmairena.123@gmail.com',
+    'Osohonduras2026@gmail.com'
+];
     
     for (const email of destinatariosPorDefecto) {
         const agregado = await db.addDestinatario(email);
