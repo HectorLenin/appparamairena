@@ -37,7 +37,7 @@ async function leerCorreoCompleto() {
         const response = await gmail.users.messages.list({
             userId: 'me',
             q: query,
-            maxResults: 1
+            maxResults: 10  // Traer varios por si hay varios destinatarios
         });
 
         const messages = response.data.messages || [];
@@ -47,75 +47,120 @@ async function leerCorreoCompleto() {
             return null;
         }
 
-        const messageId = messages[0].id;
-        console.log(`📧 Correo encontrado: ${messageId}`);
+        console.log(`📧 Encontrados ${messages.length} correos de Netflix`);
 
-        const messageData = await gmail.users.messages.get({
-            userId: 'me',
-            id: messageId,
-            format: 'full'
-        });
+        const correosProcesados = [];
 
-        let cuerpoHTML = '';
-        let cuerpoTexto = '';
+        for (const msg of messages) {
+            const messageId = msg.id;
+            console.log(`📧 Procesando correo: ${messageId}`);
 
-        const parts = messageData.data.payload?.parts || [];
-        
-        function procesarParte(parte) {
-            if (parte.mimeType === 'text/html' && parte.body?.data) {
-                cuerpoHTML = Buffer.from(parte.body.data, 'base64').toString('utf-8');
+            const messageData = await gmail.users.messages.get({
+                userId: 'me',
+                id: messageId,
+                format: 'full'
+            });
+
+            let cuerpoHTML = '';
+            let cuerpoTexto = '';
+
+            const parts = messageData.data.payload?.parts || [];
+            
+            function procesarParte(parte) {
+                if (parte.mimeType === 'text/html' && parte.body?.data) {
+                    cuerpoHTML = Buffer.from(parte.body.data, 'base64').toString('utf-8');
+                }
+                if (parte.mimeType === 'text/plain' && parte.body?.data) {
+                    cuerpoTexto = Buffer.from(parte.body.data, 'base64').toString('utf-8');
+                }
+                if (parte.parts) {
+                    parte.parts.forEach(p => procesarParte(p));
+                }
             }
-            if (parte.mimeType === 'text/plain' && parte.body?.data) {
-                cuerpoTexto = Buffer.from(parte.body.data, 'base64').toString('utf-8');
+
+            if (parts.length > 0) {
+                parts.forEach(part => procesarParte(part));
+            } else if (messageData.data.payload?.body?.data) {
+                const data = messageData.data.payload.body.data;
+                if (messageData.data.payload.mimeType === 'text/html') {
+                    cuerpoHTML = Buffer.from(data, 'base64').toString('utf-8');
+                } else {
+                    cuerpoTexto = Buffer.from(data, 'base64').toString('utf-8');
+                }
             }
-            if (parte.parts) {
-                parte.parts.forEach(p => procesarParte(p));
+
+            if (!cuerpoHTML && cuerpoTexto) {
+                cuerpoHTML = cuerpoTexto.replace(/\n/g, '<br>');
             }
+
+            const tokenRegex = /NF-[A-Z0-9]{4}-[A-Z0-9]{4}/i;
+            const match = cuerpoHTML.match(tokenRegex) || cuerpoTexto.match(tokenRegex);
+            const token = match ? match[0].toUpperCase() : null;
+
+            const headers = messageData.data.payload?.headers || [];
+            const subject = headers.find(h => h.name === 'Subject')?.value || 'Sin asunto';
+            const from = headers.find(h => h.name === 'From')?.value || 'Netflix';
+
+            const correo = {
+                id: messageId,
+                subject: subject,
+                from: from,
+                cuerpoHTML: cuerpoHTML,
+                cuerpoTexto: cuerpoTexto,
+                token: token,
+                date: new Date(parseInt(messageData.data.internalDate)),
+                snippet: messageData.data.snippet || ''
+            };
+
+            // 📌 GUARDAR CORREO PARA CADA DESTINATARIO
+            const destinatarios = await db.getDestinatarios();
+            const emails = destinatarios.map(d => d.email);
+            
+            for (const email of emails) {
+                await db.guardarCorreoParaCuenta(email, correo);
+            }
+
+            // Guardar también el token global
+            if (token) {
+                await db.setUltimoToken(token);
+            }
+
+            correosProcesados.push(correo);
         }
 
-        if (parts.length > 0) {
-            parts.forEach(part => procesarParte(part));
-        } else if (messageData.data.payload?.body?.data) {
-            const data = messageData.data.payload.body.data;
-            if (messageData.data.payload.mimeType === 'text/html') {
-                cuerpoHTML = Buffer.from(data, 'base64').toString('utf-8');
-            } else {
-                cuerpoTexto = Buffer.from(data, 'base64').toString('utf-8');
-            }
-        }
-
-        if (!cuerpoHTML && cuerpoTexto) {
-            cuerpoHTML = cuerpoTexto.replace(/\n/g, '<br>');
-        }
-
-        const tokenRegex = /NF-[A-Z0-9]{4}-[A-Z0-9]{4}/i;
-        const match = cuerpoHTML.match(tokenRegex) || cuerpoTexto.match(tokenRegex);
-        const token = match ? match[0].toUpperCase() : null;
-
-        const headers = messageData.data.payload?.headers || [];
-        const subject = headers.find(h => h.name === 'Subject')?.value || 'Sin asunto';
-        const from = headers.find(h => h.name === 'From')?.value || 'Netflix';
-
-        const correo = {
-            id: messageId,
-            subject: subject,
-            from: from,
-            cuerpoHTML: cuerpoHTML,
-            cuerpoTexto: cuerpoTexto,
-            token: token,
-            date: new Date(parseInt(messageData.data.internalDate)),
-            snippet: messageData.data.snippet || ''
-        };
-
-        await db.setUltimoCorreo(correo);
-
-        console.log(`✅ Correo leído: ${subject}`);
-        if (token) console.log(`🔑 Token encontrado: ${token}`);
-
-        return correo;
+        // Devolver el más reciente para compatibilidad
+        return correosProcesados.length > 0 ? correosProcesados[0] : null;
 
     } catch (error) {
-        console.error('❌ Error al leer correo:', error);
+        console.error('❌ Error al leer correos:', error);
+        return null;
+    }
+}
+
+// ============================================
+// LEER CORREO PARA UNA CUENTA ESPECÍFICA
+// ============================================
+
+async function leerCorreoParaCuenta(email) {
+    try {
+        // Primero buscar en la base de datos
+        const correoGuardado = await db.getUltimoCorreoPorCuenta(email);
+        if (correoGuardado) {
+            console.log(`📧 Correo encontrado en BD para ${email}: ${correoGuardado.subject}`);
+            return correoGuardado;
+        }
+
+        // Si no hay, forzar lectura general
+        console.log(`📨 Buscando correo específico para ${email}...`);
+        const correoGeneral = await leerCorreoCompleto();
+        if (correoGeneral) {
+            await db.guardarCorreoParaCuenta(email, correoGeneral);
+            return correoGeneral;
+        }
+
+        return null;
+    } catch (error) {
+        console.error(`❌ Error al leer correo para ${email}:`, error);
         return null;
     }
 }
@@ -141,5 +186,6 @@ async function hayTokenNuevo() {
 module.exports = {
     initOAuth2,
     leerCorreoCompleto,
+    leerCorreoParaCuenta,
     hayTokenNuevo
 };
