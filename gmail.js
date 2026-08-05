@@ -78,7 +78,6 @@ async function leerCorreoCompleto() {
 
         const gmail = google.gmail({ version: 'v1', auth });
 
-        // 🔥 BUSCAR EN LOS ÚLTIMOS 7 DÍAS
         const fechaLimite = Math.floor(Date.now() / 1000 - 7 * 24 * 60 * 60);
         const query = `from:netflix.com after:${fechaLimite}`;
         
@@ -165,7 +164,7 @@ async function leerCorreoCompleto() {
 }
 
 // ============================================
-// LEER CORREO PARA UN CLIENTE ESPECÍFICO (EN TIEMPO REAL)
+// LEER CORREO PARA UN CLIENTE ESPECÍFICO
 // ============================================
 
 async function leerCorreoParaCliente(email) {
@@ -199,7 +198,6 @@ async function leerCorreoParaCliente(email) {
 
         const gmail = google.gmail({ version: 'v1', auth });
 
-        // 🔥 BUSCAR EN LOS ÚLTIMOS 7 DÍAS
         const fechaLimite = Math.floor(Date.now() / 1000 - 7 * 24 * 60 * 60);
         const query = `from:netflix.com after:${fechaLimite}`;
         
