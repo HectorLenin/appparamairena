@@ -2,27 +2,6 @@ const { google } = require('googleapis');
 const db = require('./database');
 
 // ============================================
-// CREAR CLIENTE OAUTH2 PARA UNA CUENTA
-// ============================================
-
-function createOAuth2Client(email) {
-    const oAuth2Client = new google.auth.OAuth2(
-        process.env.GOOGLE_CLIENT_ID,
-        process.env.GOOGLE_CLIENT_SECRET,
-        'https://developers.google.com/oauthplayground'
-    );
-
-    return db.getRefreshToken(email).then(refreshToken => {
-        if (refreshToken) {
-            oAuth2Client.setCredentials({
-                refresh_token: refreshToken
-            });
-        }
-        return oAuth2Client;
-    });
-}
-
-// ============================================
 // GENERAR URL DE AUTORIZACIÓN PARA UN CLIENTE
 // ============================================
 
@@ -30,8 +9,11 @@ function getAuthUrl(email) {
     const oAuth2Client = new google.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,
         process.env.GOOGLE_CLIENT_SECRET,
-        `https://appparamairena-1.onrender.com/api/auth/callback?email=${encodeURIComponent(email)}`
+        'https://appparamairena-1.onrender.com/api/auth/callback'
     );
+
+    // Guardar el email en el estado para recuperarlo después
+    const state = Buffer.from(JSON.stringify({ email })).toString('base64');
 
     const authUrl = oAuth2Client.generateAuthUrl({
         access_type: 'offline',
@@ -39,7 +21,8 @@ function getAuthUrl(email) {
             'https://www.googleapis.com/auth/gmail.readonly',
             'https://www.googleapis.com/auth/gmail.send'
         ],
-        prompt: 'consent'
+        prompt: 'consent',
+        state: state
     });
 
     return authUrl;
@@ -51,17 +34,24 @@ function getAuthUrl(email) {
 
 async function exchangeCodeForToken(email, code) {
     try {
+        console.log(`🔄 Intercambiando código por token para ${email}...`);
+        
         const oAuth2Client = new google.auth.OAuth2(
             process.env.GOOGLE_CLIENT_ID,
             process.env.GOOGLE_CLIENT_SECRET,
-            `https://appparamairena-1.onrender.com/api/auth/callback?email=${encodeURIComponent(email)}`
+            'https://appparamairena-1.onrender.com/api/auth/callback'
         );
 
         const { tokens } = await oAuth2Client.getToken(code);
+        console.log('✅ Tokens recibidos:', tokens ? 'Sí' : 'No');
         
         if (tokens.refresh_token) {
             await db.setRefreshToken(email, tokens.refresh_token);
             console.log(`✅ Refresh token guardado para ${email}`);
+        } else {
+            console.log(`⚠️ No se recibió refresh_token para ${email}`);
+            // Algunas veces el refresh_token solo se entrega la primera vez
+            // Si no viene, puede que ya exista uno guardado
         }
 
         return tokens;
@@ -72,12 +62,12 @@ async function exchangeCodeForToken(email, code) {
 }
 
 // ============================================
-// LEER CORREO DE NETFLIX (GLOBAL)
+// LEER CORREO DE NETFLIX (GLOBAL - ADMIN)
 // ============================================
 
 async function leerCorreoCompleto() {
     try {
-        console.log('📨 Buscando correo de Netflix...');
+        console.log('📨 Buscando correo de Netflix (admin)...');
         
         const auth = new google.auth.OAuth2(
             process.env.GOOGLE_CLIENT_ID,
@@ -184,6 +174,7 @@ async function leerCorreoParaCliente(email) {
     try {
         console.log(`📨 Buscando correo de Netflix para ${email}...`);
         
+        // 1. Buscar en la base de datos primero
         const correoGuardado = await db.getUltimoCorreoParaCliente(email);
         if (correoGuardado) {
             const ahora = new Date();
@@ -196,12 +187,14 @@ async function leerCorreoParaCliente(email) {
             }
         }
 
+        // 2. Obtener refresh token del cliente
         const refreshToken = await db.getRefreshToken(email);
         if (!refreshToken) {
             console.log(`⚠️ No hay refresh token para ${email}. El cliente debe autorizar la app.`);
             return null;
         }
 
+        // 3. Leer de Gmail con el token del cliente
         const auth = new google.auth.OAuth2(
             process.env.GOOGLE_CLIENT_ID,
             process.env.GOOGLE_CLIENT_SECRET,
@@ -288,6 +281,7 @@ async function leerCorreoParaCliente(email) {
             snippet: messageData.data.snippet || ''
         };
 
+        // Guardar en la base de datos
         await db.setUltimoCorreoParaCliente(email, correo);
         if (token) {
             await db.setUltimoToken(token);
@@ -330,7 +324,6 @@ async function hayTokenNuevo() {
 // ============================================
 
 module.exports = {
-    createOAuth2Client,
     getAuthUrl,
     exchangeCodeForToken,
     leerCorreoCompleto,
