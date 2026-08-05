@@ -23,7 +23,7 @@ app.use(express.json({ limit: '10mb' }));
 app.get('/', (req, res) => {
     res.json({
         status: 'OK',
-        name: 'Reenvío Netflix Backend (Correo Original)',
+        name: 'Reenvío Netflix Backend',
         version: '2.0.0',
         admin_email: process.env.ADMIN_EMAIL,
         cycle_days: process.env.CYCLE_DAYS || 20
@@ -144,7 +144,7 @@ setTimeout(async () => {
 }, 8000);
 
 // ============================================
-// ENDPOINTS DE AUTENTICACIÓN (CLIENTES)
+// ENDPOINTS DE AUTENTICACIÓN
 // ============================================
 
 // Obtener URL de autorización para un cliente
@@ -166,19 +166,36 @@ app.get('/api/auth/url', (req, res) => {
 // Callback de autorización
 app.get('/api/auth/callback', async (req, res) => {
     try {
-        const { code, email } = req.query;
+        const { code, state } = req.query;
+        
+        // Decodificar el email del state
+        let email = '';
+        try {
+            const decoded = Buffer.from(state, 'base64').toString('utf-8');
+            const data = JSON.parse(decoded);
+            email = data.email;
+        } catch (error) {
+            email = req.query.email || '';
+        }
+
         if (!code || !email) {
             return res.status(400).send('Faltan parámetros');
         }
 
+        console.log(`🔄 Procesando callback para ${email}...`);
         await gmail.exchangeCodeForToken(email, code);
+
+        // Verificar que se guardó
+        const refreshToken = await db.getRefreshToken(email);
+        console.log(`🔑 Refresh token para ${email}: ${refreshToken ? '✅ Guardado' : '❌ No guardado'}`);
+
         res.send(`
             <html>
                 <body style="font-family: Arial; text-align: center; padding: 50px;">
                     <h2>✅ ¡Autorización exitosa!</h2>
                     <p>La cuenta <strong>${email}</strong> ha sido autorizada correctamente.</p>
                     <p>Ya puedes cerrar esta ventana y volver a la aplicación.</p>
-                    <a href="/" style="display: inline-block; margin-top: 20px; padding: 10px 20px; background: #e50914; color: white; text-decoration: none; border-radius: 8px;">Volver a la app</a>
+                    <button onclick="window.close()" style="padding: 10px 20px; background: #e50914; color: white; border: none; border-radius: 8px; cursor: pointer;">Cerrar ventana</button>
                 </body>
             </html>
         `);
